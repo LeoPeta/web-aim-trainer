@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>AIM TRAINER</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
+    body.playing { cursor: none; }
+    canvas:not([id]) { position: fixed; top: 0; left: 0; z-index: 1; }
+
+    #ui {
+      position: fixed; top: 14px; left: 0; right: 0;
+      text-align: center; color: #aaa; font-size: 18px;
+      letter-spacing: 2px; pointer-events: none; z-index: 50;
+      display: flex; justify-content: center; gap: 40px;
+    }
+    .hud-val { color: #fff; }
+    #timer {
+      position: fixed; top: 14px; right: 20px;
+      color: #aaa; font-size: 20px; pointer-events: none; z-index: 50;
+    }
+    #timer.urgent { color: #f44; animation: pulse 0.5s infinite; }
+    @keyframes pulse { 50% { opacity: 0.5; } }
+
+    #crosshairCanvas {
+      position: fixed; top: 0; left: 0;
+      pointer-events: none; z-index: 50; display: none;
+    }
+
+    .overlay-base {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 20px; background: rgba(0,0,0,0.88);
+      z-index: 100; color: #aaa;
+    }
+    .overlay-base.hidden { display: none; }
+    .overlay-base h1 { font-size: 36px; color: #aaa; letter-spacing: 5px; }
+    .overlay-base p { font-size: 14px; opacity: 0.5; text-align: center; line-height: 1.8; color: #888; }
+    .final-score { font-size: 26px; color: #fff; }
+    .overlay-base button {
+      background: transparent; border: 2px solid #888; color: #ccc;
+      padding: 10px 35px; font-size: 16px; font-family: 'Courier New', monospace;
+      cursor: pointer; letter-spacing: 2px; transition: all 0.3s; border-radius: 6px;
+    }
+    .overlay-base button:hover { background: rgba(255,255,255,0.08); border-color: #ccc; }
+    .overlay-base button.primary {
+      background: rgba(255,255,255,0.08); border-color: #ccc; color: #fff;
+    }
+
+    .setting-group {
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+    }
+    .setting-label { font-size: 13px; color: #666; letter-spacing: 1px; }
+    .setting-btns { display: flex; gap: 8px; }
+    .sensitivity-slider {
+      -webkit-appearance: none; appearance: none;
+      width: 220px; height: 4px; background: #444; border-radius: 2px; outline: none;
+    }
+    .sensitivity-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: #ccc; cursor: pointer; border: 2px solid #888;
+    }
+    .sensitivity-slider::-moz-range-thumb {
+      width: 16px; height: 16px; border-radius: 50%;
+      background: #ccc; cursor: pointer; border: 2px solid #888;
+    }
+    .crosshair-colors { display: flex; gap: 8px; }
+    .crosshair-colors button {
+      width: 28px; height: 28px; border-radius: 50%; border: 2px solid #555;
+      cursor: pointer; padding: 0; transition: border-color 0.2s;
+    }
+    .crosshair-colors button.active { border-color: #fff; }
+    .crosshair-slider-row {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .crosshair-slider-row input[type="range"] {
+      -webkit-appearance: none; appearance: none;
+      width: 160px; height: 4px; background: #444; border-radius: 2px; outline: none;
+    }
+    .crosshair-slider-row input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: #ccc; cursor: pointer; border: 2px solid #888;
+    }
+    .crosshair-slider-row input[type="range"]::-moz-range-thumb {
+      width: 14px; height: 14px; border-radius: 50%;
+      background: #ccc; cursor: pointer; border: 2px solid #888;
+    }
+    .crosshair-slider-val { font-size: 13px; color: #888; min-width: 32px; text-align: right; }
+    .crosshair-preview {
+      width: 100px; height: 100px; background: #a4a4a4;
+      border: 1px solid #333; border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .sensitivity-val {
+      width: 60px; font-size: 14px; color: #fff; letter-spacing: 1px;
+      text-align: center; background: transparent; border: 1px solid #555;
+      border-radius: 4px; padding: 2px 4px; font-family: 'Courier New', monospace;
+      outline: none;
+    }
+    .sensitivity-val:focus { border-color: #aaa; }
+    .setting-btns button { padding: 8px 18px; font-size: 13px; }
+    .setting-btns button.active {
+      background: rgba(255,255,255,0.15); border-color: #aaa; color: #fff;
+    }
+
+    .stats-grid {
+      display: flex; justify-content: center;
+      gap: 50px; margin: 15px 0; text-align: center;
+    }
+    .stat-item { display: flex; flex-direction: column; gap: 4px; }
+    .stat-val { font-size: 22px; color: #fff; }
+    .stat-label { font-size: 12px; color: #666; }
+
+    #errorMsg {
+      position: fixed; bottom: 20px; left: 0; right: 0;
+      text-align: center; color: #f44; font-size: 12px;
+      z-index: 200; pointer-events: none; display: none;
+    }
+
+    .chart-section { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .chart-mode-label { font-size: 13px; color: #666; letter-spacing: 1px; }
+    .chart-legend { font-size: 12px; color: #888; display: flex; gap: 16px; }
+    .legend-score { color: #00ffff; }
+    .legend-acc { color: #ff8800; }
+    .charts-row { display: flex; gap: 16px; }
+    .charts-row canvas { border: 1px solid #333; border-radius: 4px; cursor: crosshair; }
+    #chartTooltip {
+      position: fixed; pointer-events: none; z-index: 150;
+      background: rgba(0,0,0,0.9); border: 1px solid #555; border-radius: 4px;
+      padding: 6px 10px; font-size: 12px; color: #ccc; white-space: nowrap;
+      display: none; font-family: 'Courier New', monospace;
+    }
+    .chart-no-data { font-size: 14px; color: #555; }
+    .end-actions { display: flex; gap: 10px; position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); }
+    .end-action-btn {
+      background: transparent; border: 1px solid #666; color: #888;
+      padding: 4px 14px; font-size: 12px; font-family: 'Courier New', monospace;
+      cursor: pointer; letter-spacing: 1px; transition: all 0.3s; border-radius: 4px;
+    }
+    .end-action-btn:hover { background: rgba(255,255,255,0.06); border-color: #999; color: #bbb; }
+    .end-action-btn.primary {
+      background: rgba(255,255,255,0.06); border-color: #888; color: #ccc;
+    }
+
+    #countdownOverlay {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: none; z-index: 60;
+    }
+    #countdownOverlay.hidden { display: none; }
+    #countdownText {
+      font-size: 72px; color: #fff; font-family: 'Aptos', sans-serif;
+      font-weight: bold; letter-spacing: 0; opacity: 0.8;
+      width: 100px; height: 100px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.5);
+      border-radius: 50%;
+    }
+  </style>
+  <script src="three.min.js"></script>
+</head>
+<body>
+
+<div id="ui">
+  <div>得分 <span class="hud-val" id="scoreText">0</span></div>
+  <div>命中 <span class="hud-val" id="hitsText">0</span></div>
+  <div>未中 <span class="hud-val" id="missesText">0</span></div>
+</div>
+<div id="timer">⏱ 60</div>
+<div id="fps" style="position:fixed;top:14px;left:20px;color:#555;font-size:13px;pointer-events:none;z-index:50;font-family:'Courier New',monospace;"></div>
+<canvas id="crosshairCanvas"></canvas>
+
+<!-- Main Menu -->
+<div id="menuOverlay" class="overlay-base">
+  <h1>AIM TRAINER</h1>
+  <p style="font-size:9px;color:#555;margin:0;">按 F11 全屏显示</p>
+  <button class="primary" onclick="startTraining()">开始训练</button>
+
+  <button onclick="showSettings()">准心设置</button>
+
+  <button onclick="showGameplay()">玩法设置</button>
+
+  <div class="setting-group">
+    <div class="setting-label">鼠标灵敏度</div>
+    <input type="range" class="sensitivity-slider" id="sensitivitySlider"
+      min="0.01" max="2" step="0.01" value="1"
+      oninput="setSensitivity(this.value)">
+    <input type="text" class="sensitivity-val" id="sensitivityVal" value="1.00"
+      onfocus="this.select()"
+      onkeydown="if(event.key==='Enter')this.blur()"
+      onblur="validateSensitivity(this)">
+  </div>
+</div>
+
+<!-- Gameplay Settings Sub-menu -->
+<div id="gameplayOverlay" class="overlay-base hidden">
+  <h1>玩法设置</h1>
+
+  <div class="setting-group">
+    <div class="setting-label">目标距离</div>
+    <div class="setting-btns" id="distBtns">
+      <button class="active" onclick="setDist('near')">近 (8m)</button>
+      <button onclick="setDist('mid')">中 (12m)</button>
+      <button onclick="setDist('far')">远 (16m)</button>
+    </div>
+  </div>
+
+  <div class="setting-group">
+    <div class="setting-label">目标大小</div>
+    <div class="setting-btns" id="sizeBtns">
+      <button class="active" onclick="setSize('big')">大</button>
+      <button onclick="setSize('mid')">中</button>
+      <button onclick="setSize('small')">小</button>
+      <button onclick="setSize('tiny')">极小</button>
+    </div>
+  </div>
+
+  <div class="setting-group">
+    <div class="setting-label">训练时间</div>
+    <div class="setting-btns" id="timeBtns">
+      <button onclick="setTime(30)">30秒</button>
+      <button class="active" onclick="setTime(60)">1分钟</button>
+      <button onclick="setTime(120)">2分钟</button>
+    </div>
+  </div>
+
+  <div class="setting-group">
+    <div class="setting-label">目标布局</div>
+    <div class="setting-btns" id="gridBtns">
+      <button class="active" onclick="setGrid('3x3')">9宫格</button>
+      <button onclick="setGrid('5x5')">25宫格</button>
+    </div>
+  </div>
+
+  <button onclick="hideGameplay()">返回</button>
+</div>
+
+<!-- Settings Sub-menu -->
+<div id="settingsOverlay" class="overlay-base hidden">
+  <h1>准心设置</h1>
+
+  <div class="crosshair-preview">
+    <canvas id="crosshairPreview" width="100" height="100"></canvas>
+  </div>
+
+  <div class="setting-group">
+    <div class="setting-label">准心颜色</div>
+    <div class="crosshair-colors" id="crosshairColorBtns">
+      <button style="background:#fff" class="active" onclick="setCrosshairColor('#fff',this)"></button>
+      <button style="background:#0f0" onclick="setCrosshairColor('#0f0',this)"></button>
+      <button style="background:#f44" onclick="setCrosshairColor('#f44',this)"></button>
+      <button style="background:#000;border-color:#555" onclick="setCrosshairColor('#000',this)"></button>
+    </div>
+  </div>
+
+  <div class="setting-group">
+    <div class="setting-label">准心线长</div>
+    <div class="crosshair-slider-row">
+      <input type="range" id="crosshairLenSlider" min="1" max="30" step="1" value="5"
+        oninput="setCrosshairLen(this.value)">
+      <span class="crosshair-slider-val" id="crosshairLenVal">5px</span>
+    </div>
+  </div>
+
+  <div class="setting-group">
+    <div class="setting-label">准心间隙</div>
+    <div class="crosshair-slider-row">
+      <input type="range" id="crosshairGapSlider" min="0" max="10" step="1" value="0"
+        oninput="setCrosshairGap(this.value)">
+      <span class="crosshair-slider-val" id="crosshairGapVal">0px</span>
+    </div>
+  </div>
+
+  <div class="setting-group">
+    <div class="setting-label">准心边框</div>
+    <div class="crosshair-slider-row">
+      <input type="range" id="crosshairBorderSlider" min="0" max="5" step="1" value="0"
+        oninput="setCrosshairBorder(this.value)">
+      <span class="crosshair-slider-val" id="crosshairBorderVal">0px</span>
+    </div>
+  </div>
+
+  <div class="setting-group">
+    <div class="setting-label">中心点</div>
+    <div class="crosshair-slider-row">
+      <input type="range" id="crosshairDotSlider" min="0" max="6" step="1" value="0"
+        oninput="setCrosshairDot(this.value)">
+      <span class="crosshair-slider-val" id="crosshairDotVal">0px</span>
+    </div>
+  </div>
+
+  <button onclick="hideSettings()">返回</button>
+</div>
+
+<!-- Pause Menu -->
+<div id="pauseOverlay" class="overlay-base hidden">
+  <h1>⏸ 暂停</h1>
+  <button onclick="resumeTraining()">继续训练</button>
+  <button onclick="restartTraining()">重新开始</button>
+  <button onclick="backToMenu()">返回菜单</button>
+</div>
+
+<!-- End Screen -->
+<div id="endOverlay" class="overlay-base hidden">
+  <h1>⏱ 训练结束</h1>
+  <div class="final-score" id="finalScore">0</div>
+  <div class="stats-grid">
+    <div class="stat-item"><div class="stat-val" id="statHits">0</div><div class="stat-label">命中</div></div>
+    <div class="stat-item"><div class="stat-val" id="statMisses">0</div><div class="stat-label">未中</div></div>
+    <div class="stat-item"><div class="stat-val" id="statAccuracy">0%</div><div class="stat-label">命中率</div></div>
+    <div class="stat-item"><div class="stat-val" id="statReaction">0ms</div><div class="stat-label">平均反应时长</div></div>
+  </div>
+  <div class="charts-row" id="chartsRow">
+    <div class="chart-section">
+      <div class="chart-legend"><span class="legend-score">综合得分趋势</span></div>
+      <canvas id="chartCanvas" width="360" height="180"></canvas>
+    </div>
+    <div class="chart-section">
+      <div class="chart-legend"><span class="legend-acc">命中率趋势</span></div>
+      <canvas id="chartCanvasAcc" width="360" height="180"></canvas>
+    </div>
+  </div>
+  <div class="chart-mode-label" id="chartModeLabel"></div>
+  <div class="chart-no-data" id="chartNoData" style="display:none">暂无训练数据</div>
+  <div class="end-actions">
+    <button class="end-action-btn primary" onclick="startTraining()">再来一局</button>
+    <button class="end-action-btn" onclick="backToMenu()">返回菜单</button>
+  </div>
+</div>
+<div id="chartTooltip"></div>
+
+<div id="countdownOverlay" class="hidden">
+  <div id="countdownText">3</div>
+</div>
+
+<div id="errorMsg"></div>
+
+<!-- Module load order matters: globals → scene → settings → targets (uses scene + settings)
+     → crosshair → history → chart → hud → training → input (uses all)
+     → preferences (must be last; depends on all setters) -->
+<script src="js/main.js"></script>
+<script src="js/scene.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/targets.js"></script>
+<script src="js/crosshair.js"></script>
+<script src="js/history.js"></script>
+<script src="js/chart.js"></script>
+<script src="js/hud.js"></script>
+<script src="js/sound.js"></script>
+<script src="js/training.js"></script>
+<script src="js/input.js"></script>
+<script src="js/preferences.js"></script>
+<script>
+  // Restore user preferences (crosshair, sensitivity, training params) from localStorage
+  loadPreferences();
+  // Start the main loop after all modules loaded
+  requestAnimationFrame(animate);
+</script>
+</body>
+</html>
