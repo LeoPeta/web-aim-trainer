@@ -13,8 +13,9 @@ function savePreferences() {
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify({
       // Training params
+      currentTrainingMode,
       currentDist, currentRadius, totalTime, currentGrid,
-      sensitivityMultiplier,
+      sensitivityMultiplier, cameraFov,
       // Crosshair params
       crosshairColor, crosshairLen, crosshairGap, crosshairBorder, crosshairDot,
     }));
@@ -27,6 +28,15 @@ function loadPreferences() {
     prefs = JSON.parse(localStorage.getItem(PREFS_KEY));
   } catch (e) { prefs = null; }
   if (!prefs) return;
+
+  // ----- Training mode -----
+  if (typeof prefs.currentTrainingMode === 'string' && TRAINING_MODES[prefs.currentTrainingMode]) {
+    currentTrainingMode = prefs.currentTrainingMode;
+    activateBtnByText('modeBtns', b =>
+      (currentTrainingMode === 'classic' && b.textContent === '3球网格射击') ||
+      (currentTrainingMode === 'sixBall' && b.textContent === '六球定位')
+    );
+  }
 
   // ----- Training params -----
   if (typeof prefs.currentDist === 'number') {
@@ -50,12 +60,23 @@ function loadPreferences() {
     const gridLabel = currentGrid === '3x3' ? '9宫格' : '25宫格';
     activateBtnByText('gridBtns', b => b.textContent === gridLabel);
   }
+  applyTrainingModeUI();
 
   // ----- Sensitivity -----
   if (typeof prefs.sensitivityMultiplier === 'number') {
     sensitivityMultiplier = prefs.sensitivityMultiplier;
     document.getElementById('sensitivitySlider').value = sensitivityMultiplier;
     document.getElementById('sensitivityVal').value = sensitivityMultiplier.toFixed(2);
+  }
+
+  // ----- Camera FOV -----
+  if (typeof prefs.cameraFov === 'number') {
+    cameraFov = prefs.cameraFov;
+    if (cameraFov < 85) cameraFov = 85;
+    if (cameraFov > 120) cameraFov = 120;
+    document.getElementById('fovSlider').value = cameraFov;
+    document.getElementById('fovVal').textContent = cameraFov;
+    applyCameraFov();
   }
 
   // ----- Crosshair -----

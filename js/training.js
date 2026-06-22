@@ -7,13 +7,13 @@ function startTraining() {
   reactionTimes = [];
   lastShotTime = 0;
   yaw = 0; pitch = 0;
+  clearInputBuffer();
   camera.rotation.set(0, 0, 0);
   camera.position.set(0, 5, 0);
 
-  applyGridConfig();
-  targetSlots = {};
-  usedSlots = new Set();
-  for (const t of targets) resetTarget(t);
+  prepareActiveModeTargets();
+  syncActiveTargets();
+  for (const t of activeTargets) resetTarget(t);
 
   updateHUD();
   document.getElementById('menuOverlay').classList.add('hidden');
@@ -26,6 +26,8 @@ function startTraining() {
   countdownTime = 3;
   document.getElementById('countdownText').textContent = '3';
   document.getElementById('countdownOverlay').classList.remove('hidden');
+  updateRendererVisibility();
+  renderSceneOnce();
   lastTime = performance.now();
 }
 
@@ -37,6 +39,8 @@ function restartTraining() {
 
 function pauseTraining() {
   trainState = 'paused';
+  clearInputBuffer();
+  updateRendererVisibility();
   document.getElementById('pauseOverlay').classList.remove('hidden');
   document.getElementById('crosshairCanvas').style.display = 'none';
   document.getElementById('countdownOverlay').classList.add('hidden');
@@ -50,6 +54,9 @@ function resumeTraining() {
   } else {
     trainState = 'playing';
   }
+  clearInputBuffer();
+  updateRendererVisibility();
+  renderSceneOnce();
   document.getElementById('pauseOverlay').classList.add('hidden');
   renderer.domElement.requestPointerLock();
   lastTime = performance.now();
@@ -57,6 +64,8 @@ function resumeTraining() {
 
 function backToMenu() {
   trainState = 'menu';
+  clearInputBuffer();
+  updateRendererVisibility();
   document.getElementById('pauseOverlay').classList.add('hidden');
   document.getElementById('endOverlay').classList.add('hidden');
   document.getElementById('menuOverlay').classList.remove('hidden');
@@ -68,6 +77,8 @@ function backToMenu() {
 
 function endTraining() {
   trainState = 'over';
+  clearInputBuffer();
+  updateRendererVisibility();
   if (isLocked) document.exitPointerLock();
   document.getElementById('crosshairCanvas').style.display = 'none';
   document.getElementById('countdownOverlay').classList.add('hidden');

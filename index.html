@@ -51,6 +51,7 @@
     .setting-group {
       display: flex; flex-direction: column; align-items: center; gap: 8px;
     }
+    .setting-group.disabled { opacity: 0.35; pointer-events: none; }
     .setting-label { font-size: 13px; color: #666; letter-spacing: 1px; }
     .setting-btns { display: flex; gap: 8px; }
     .sensitivity-slider {
@@ -186,12 +187,20 @@
   <div class="setting-group">
     <div class="setting-label">鼠标灵敏度</div>
     <input type="range" class="sensitivity-slider" id="sensitivitySlider"
-      min="0.01" max="2" step="0.01" value="1"
+      min="0.1" max="2" step="0.01" value="0.5"
       oninput="setSensitivity(this.value)">
-    <input type="text" class="sensitivity-val" id="sensitivityVal" value="1.00"
+    <input type="text" class="sensitivity-val" id="sensitivityVal" value="0.50"
       onfocus="this.select()"
       onkeydown="if(event.key==='Enter')this.blur()"
       onblur="validateSensitivity(this)">
+  </div>
+
+  <div class="setting-group">
+    <div class="setting-label">水平视野 hFOV</div>
+    <input type="range" class="sensitivity-slider" id="fovSlider"
+      min="85" max="120" step="1" value="103"
+      oninput="setCameraFov(this.value)">
+    <span class="sensitivity-val" id="fovVal">103</span>
   </div>
 </div>
 
@@ -200,6 +209,15 @@
   <h1>玩法设置</h1>
 
   <div class="setting-group">
+    <div class="setting-label">训练模式</div>
+    <div class="setting-btns" id="modeBtns">
+      <button class="active" onclick="setTrainingMode('classic')">3球网格射击</button>
+      <button onclick="setTrainingMode('sixBall')">六球定位</button>
+    </div>
+    <div class="setting-label" id="modeHint"></div>
+  </div>
+
+  <div class="setting-group" id="distGroup">
     <div class="setting-label">目标距离</div>
     <div class="setting-btns" id="distBtns">
       <button class="active" onclick="setDist('near')">近 (8m)</button>
@@ -208,7 +226,7 @@
     </div>
   </div>
 
-  <div class="setting-group">
+  <div class="setting-group" id="sizeGroup">
     <div class="setting-label">目标大小</div>
     <div class="setting-btns" id="sizeBtns">
       <button class="active" onclick="setSize('big')">大</button>
@@ -227,7 +245,7 @@
     </div>
   </div>
 
-  <div class="setting-group">
+  <div class="setting-group" id="gridGroup">
     <div class="setting-label">目标布局</div>
     <div class="setting-btns" id="gridBtns">
       <button class="active" onclick="setGrid('3x3')">9宫格</button>
@@ -338,11 +356,15 @@
 
 <div id="errorMsg"></div>
 
-<!-- Module load order matters: globals → scene → settings → targets (uses scene + settings)
-     → crosshair → history → chart → hud → training → input (uses all)
-     → preferences (must be last; depends on all setters) -->
+<!-- Module load order matters: globals → scene → mode registry/modes → scoring
+     → settings → targets → crosshair → history → chart → hud → sound → training
+     → click-scoring → input → preferences (must be last; depends on all setters) -->
 <script src="js/main.js"></script>
 <script src="js/scene.js"></script>
+<script src="js/modes/registry.js"></script>
+<script src="js/modes/classic.js"></script>
+<script src="js/modes/six-ball.js"></script>
+<script src="js/scoring/general-score.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/targets.js"></script>
 <script src="js/crosshair.js"></script>
@@ -351,6 +373,7 @@
 <script src="js/hud.js"></script>
 <script src="js/sound.js"></script>
 <script src="js/training.js"></script>
+<script src="js/scoring/click-scoring.js"></script>
 <script src="js/input.js"></script>
 <script src="js/preferences.js"></script>
 <script>

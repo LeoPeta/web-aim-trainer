@@ -3,7 +3,12 @@ try {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x181818);
 
-  camera = new THREE.PerspectiveCamera(103, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera = new THREE.PerspectiveCamera(
+    horizontalToVerticalFov(cameraFov, window.innerWidth / window.innerHeight),
+    window.innerWidth / window.innerHeight,
+    0.1,
+    1000
+  );
   camera.rotation.order = 'YXZ';
   camera.position.set(0, 5, 0);
 
@@ -11,6 +16,7 @@ try {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   document.body.appendChild(renderer.domElement);
+  renderer.domElement.style.display = 'none';
 
   // Ground grid
   scene.add(new THREE.GridHelper(40, 20, 0x333333, 0x2a2a2a));

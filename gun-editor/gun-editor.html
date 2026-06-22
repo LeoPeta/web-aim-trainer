@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Gun Model Editor — AIM TRAINER</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #000; color: #aaa;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+      display: flex;
+      height: 100vh;
+    }
+
+    /* ---- Viewport ---- */
+    #viewport { flex: 1; position: relative; }
+    #viewport canvas { display: block; }
+
+    #modeLabel {
+      position: absolute; bottom: 14px; left: 16px;
+      font-size: 12px; color: #444; pointer-events: none; z-index: 10;
+    }
+
+    /* FPS crosshair overlay */
+    #fpsCrosshair {
+      position: absolute; top: 50%; left: 50%;
+      width: 22px; height: 22px;
+      transform: translate(-50%, -50%);
+      pointer-events: none; display: none; z-index: 10;
+    }
+    #fpsCrosshair::before, #fpsCrosshair::after {
+      content: ''; position: absolute; background: #fff; border-radius: 1px;
+    }
+    #fpsCrosshair::before {
+      left: 50%; top: 0; width: 1.5px; height: 100%; transform: translateX(-50%);
+    }
+    #fpsCrosshair::after {
+      top: 50%; left: 0; height: 1.5px; width: 100%; transform: translateY(-50%);
+    }
+
+    /* ---- Panel ---- */
+    #panel {
+      width: 310px; min-width: 310px; height: 100vh;
+      overflow-y: auto; background: #0a0a0a;
+      border-left: 1px solid #222; padding: 14px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+
+    .panel-title {
+      font-size: 14px; color: #666; letter-spacing: 3px;
+      text-align: center; padding-bottom: 8px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+
+    /* Mode bar */
+    .mode-bar { display: flex; gap: 5px; justify-content: center; }
+    .mode-btn {
+      background: transparent; border: 1px solid #444; color: #777;
+      padding: 5px 14px; font-size: 11px;
+      font-family: 'Courier New', monospace;
+      cursor: pointer; letter-spacing: 1px; border-radius: 4px;
+      transition: all 0.2s;
+    }
+    .mode-btn:hover { border-color: #777; color: #aaa; }
+    .mode-btn.active {
+      background: rgba(255,255,255,0.08); border-color: #999; color: #ddd;
+    }
+
+    /* Part sections */
+    .part-section {
+      background: rgba(255,255,255,0.015); border: 1px solid #1a1a1a;
+      border-radius: 5px; padding: 9px 10px;
+    }
+    .part-title {
+      font-size: 12px; color: #666; letter-spacing: 2px;
+      margin-bottom: 6px; padding-bottom: 4px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+
+    /* Slider row */
+    .slider-row {
+      display: flex; align-items: center; gap: 6px; margin: 3px 0;
+    }
+    .slider-label {
+      font-size: 10px; color: #4a4a4a; width: 48px; flex-shrink: 0;
+    }
+    .slider-row input[type="range"] {
+      flex: 1; -webkit-appearance: none; appearance: none;
+      height: 3px; background: #2a2a2a; border-radius: 2px; outline: none;
+    }
+    .slider-row input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 11px; height: 11px;
+      border-radius: 50%; background: #999; cursor: pointer;
+      border: 1px solid #555;
+    }
+    .slider-row input[type="range"]::-moz-range-thumb {
+      width: 11px; height: 11px; border-radius: 50%;
+      background: #999; cursor: pointer; border: 1px solid #555;
+    }
+    .slider-val {
+      font-size: 10px; color: #666; width: 38px;
+      text-align: right; flex-shrink: 0;
+    }
+
+    /* Color row */
+    .color-row { display: flex; align-items: center; gap: 8px; margin: 5px 0 2px; }
+    .color-row input[type="color"] {
+      -webkit-appearance: none; appearance: none;
+      width: 30px; height: 20px; border: 1px solid #444;
+      border-radius: 3px; background: transparent; cursor: pointer; padding: 1px;
+    }
+    .color-row input[type="color"]::-webkit-color-swatch-wrapper { padding: 1px; }
+    .color-row input[type="color"]::-webkit-color-swatch { border: none; border-radius: 2px; }
+
+    /* Action bar */
+    .action-bar {
+      display: flex; gap: 6px; margin-top: auto; padding-top: 10px;
+      border-top: 1px solid #1a1a1a;
+    }
+    .action-btn {
+      flex: 1; background: transparent; border: 1px solid #444; color: #777;
+      padding: 7px; font-size: 11px; font-family: 'Courier New', monospace;
+      cursor: pointer; letter-spacing: 1px; border-radius: 4px;
+      transition: all 0.2s;
+    }
+    .action-btn:hover { background: rgba(255,255,255,0.04); border-color: #777; color: #aaa; }
+    .action-btn.primary { background: rgba(255,255,255,0.04); border-color: #777; color: #aaa; }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 22px; left: 50%;
+      transform: translateX(-60%);
+      background: rgba(0,0,0,0.92); border: 1px solid #555;
+      color: #ccc; padding: 7px 18px; border-radius: 4px;
+      font-size: 12px; font-family: 'Courier New', monospace;
+      z-index: 200; opacity: 0; transition: opacity 0.3s; pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
+
+    /* Scrollbar */
+    #panel::-webkit-scrollbar { width: 4px; }
+    #panel::-webkit-scrollbar-track { background: transparent; }
+    #panel::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  </style>
+
+  <!-- Shared gun model (regular script — defines DEFAULT_GUN_PARAMS & createGun) -->
+  <script src="gun-model.js"></script>
+
+  <!-- ES module import map for Three.js + OrbitControls -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.155.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+
+<!-- 3D Viewport -->
+<div id="viewport">
+  <div id="modeLabel">自由视角</div>
+  <div id="fpsCrosshair"></div>
+</div>
+
+<!-- Control Panel -->
+<div id="panel">
+  <div class="panel-title">枪械模型编辑器</div>
+
+  <div class="mode-bar">
+    <button class="mode-btn active" data-mode="free">自由视角</button>
+    <button class="mode-btn" data-mode="fps">第一人称</button>
+    <button class="mode-btn" data-action="recoil">后坐力</button>
+  </div>
+
+  <div id="controlsContainer"></div>
+
+  <div class="action-bar">
+    <button class="action-btn" id="resetBtn">重置</button>
+    <button class="action-btn primary" id="exportBtn">复制参数</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ====== State ======
+const params = JSON.parse(JSON.stringify(DEFAULT_GUN_PARAMS));
+let mode = 'free';            // 'free' | 'fps'
+let gun, scene, renderer;
+let freeCamera, fpsCamera, controls;
+let activeCamera;
+let recoilAnim = null;
+
+// FPS mouse-look state
+let isDragging = false;
+let fpsYaw = 0, fpsPitch = 0;
+
+// ====== Scene Setup ======
+function init() {
+  const vp = document.getElementById('viewport');
+
+  // Renderer
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(vp.clientWidth, vp.clientHeight);
+  renderer.setClearColor(0x181818);
+  vp.insertBefore(renderer.domElement, vp.firstChild);
+
+  // Scene
+  scene = new THREE.Scene();
+
+  // Lights (same as game)
+  scene.add(new THREE.AmbientLight(0x9D9D9D, 2.0));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+  dir.position.set(2, 5, 3);
+  scene.add(dir);
+
+  // Grid floor
+  scene.add(new THREE.GridHelper(20, 20, 0x333333, 0x222222));
+
+  // Back wall (FPS reference)
+  const wall = new THREE.Mesh(
+    new THREE.PlaneGeometry(20, 10),
+    new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 1 })
+  );
+  wall.position.set(0, 5, -20);
+  scene.add(wall);
+
+  // Free camera
+  freeCamera = new THREE.PerspectiveCamera(
+    50, vp.clientWidth / vp.clientHeight, 0.01, 100
+  );
+  freeCamera.position.set(0.4, 0.25, 0.55);
+  freeCamera.lookAt(0, -0.02, 0);
+
+  // OrbitControls
+  controls = new OrbitControls(freeCamera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.target.set(0, -0.02, 0);
+  controls.update();
+
+  // FPS camera (matches game: 103° FOV, y=5, YXZ rotation)
+  fpsCamera = new THREE.PerspectiveCamera(
+    103, vp.clientWidth / vp.clientHeight, 0.01, 100
+  );
+  fpsCamera.position.set(0, 5, 0);
+  fpsCamera.rotation.order = 'YXZ';
+  scene.add(fpsCamera);
+
+  // Create gun
+  gun = createGun(THREE, params);
+  scene.add(gun);
+  activeCamera = freeCamera;
+
+  // FPS mouse-look
+  renderer.domElement.addEventListener('mousedown', e => {
+    if (mode === 'fps' && e.button === 0) isDragging = true;
+  });
+  window.addEventListener('mouseup', () => { isDragging = false; });
+  window.addEventListener('mousemove', e => {
+    if (!isDragging || mode !== 'fps') return;
+    fpsYaw   -= e.movementX * 0.003;
+    fpsPitch -= e.movementY * 0.003;
+    fpsPitch  = Math.max(-1.2, Math.min(1.2, fpsPitch));
+    fpsCamera.rotation.set(fpsPitch, fpsYaw, 0, 'YXZ');
+  });
+
+  // Resize
+  window.addEventListener('resize', onResize);
+}
+
+function onResize() {
+  const vp = document.getElementById('viewport');
+  const w = vp.clientWidth, h = vp.clientHeight;
+  renderer.setSize(w, h);
+  freeCamera.aspect = w / h;  freeCamera.updateProjectionMatrix();
+  fpsCamera.aspect  = w / h;  fpsCamera.updateProjectionMatrix();
+}
+
+// ====== Gun Update ======
+function refreshGun() {
+  const body = gun.getObjectByName('body');
+  if (body) {
+    body.scale.set(params.body.size.x, params.body.size.y, params.body.size.z);
+    body.position.set(params.body.position.x, params.body.position.y, params.body.position.z);
+    body.rotation.set(params.body.rotation.x, params.body.rotation.y, params.body.rotation.z);
+    body.material.color.set(params.body.color);
+  }
+  const grip = gun.getObjectByName('grip');
+  if (grip) {
+    grip.scale.set(params.grip.size.x, params.grip.size.y, params.grip.size.z);
+    grip.position.set(params.grip.position.x, params.grip.position.y, params.grip.position.z);
+    grip.rotation.set(params.grip.rotation.x, params.grip.rotation.y, params.grip.rotation.z);
+    grip.material.color.set(params.grip.color);
+  }
+  // Apply FPS offset only when in FPS mode and no recoil playing
+  if (mode === 'fps' && !recoilAnim) {
+    gun.position.set(params.fpsOffset.x, params.fpsOffset.y, params.fpsOffset.z);
+    gun.rotation.set(params.fpsRotation.x, params.fpsRotation.y, params.fpsRotation.z);
+  }
+}
+
+// ====== Mode Switching ======
+function switchMode(newMode) {
+  if (newMode === mode) return;
+  mode = newMode;
+
+  document.querySelectorAll('.mode-btn[data-mode]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+  document.getElementById('modeLabel').textContent =
+    mode === 'free' ? '自由视角' : '第一人称预览';
+
+  const crosshair = document.getElementById('fpsCrosshair');
+
+  if (mode === 'free') {
+    fpsCamera.remove(gun);
+    gun.position.set(0, 0, 0);
+    gun.rotation.set(0, 0, 0);
+    scene.add(gun);
+    activeCamera = freeCamera;
+    controls.enabled = true;
+    controls.update();
+    crosshair.style.display = 'none';
+  } else {
+    scene.remove(gun);
+    gun.position.set(params.fpsOffset.x, params.fpsOffset.y, params.fpsOffset.z);
+    gun.rotation.set(params.fpsRotation.x, params.fpsRotation.y, params.fpsRotation.z);
+    fpsCamera.add(gun);
+    activeCamera = fpsCamera;
+    controls.enabled = false;
+    // Reset FPS look
+    fpsYaw = 0; fpsPitch = 0;
+    fpsCamera.rotation.set(0, 0, 0, 'YXZ');
+    crosshair.style.display = 'block';
+  }
+}
+
+// ====== Recoil Simulation ======
+function playRecoil() {
+  if (recoilAnim) return;
+  const startPos = gun.position.clone();
+  const startRot = gun.rotation.clone();
+
+  const recoilPos = new THREE.Vector3(0, 0.02, 0.04);
+  const recoilRot = new THREE.Euler(-0.08, 0, 0);
+
+  recoilAnim = {
+    startPos, startRot, recoilPos, recoilRot,
+    duration: 150,
+    startTime: performance.now()
+  };
+}
+
+function updateRecoil() {
+  if (!recoilAnim) return;
+  const t = Math.min((performance.now() - recoilAnim.startTime) / recoilAnim.duration, 1);
+
+  // Quick kick (0–25%), slow return (25–100%)
+  const p = t < 0.25 ? t / 0.25 : 1 - (t - 0.25) / 0.75;
+
+  gun.position.set(
+    recoilAnim.startPos.x + recoilAnim.recoilPos.x * p,
+    recoilAnim.startPos.y + recoilAnim.recoilPos.y * p,
+    recoilAnim.startPos.z + recoilAnim.recoilPos.z * p
+  );
+  gun.rotation.set(
+    recoilAnim.startRot.x + recoilAnim.recoilRot.x * p,
+    recoilAnim.startRot.y,
+    recoilAnim.startRot.z
+  );
+
+  if (t >= 1) {
+    // Return to base position
+    if (mode === 'fps') {
+      gun.position.set(params.fpsOffset.x, params.fpsOffset.y, params.fpsOffset.z);
+      gun.rotation.set(params.fpsRotation.x, params.fpsRotation.y, params.fpsRotation.z);
+    } else {
+      gun.position.set(0, 0, 0);
+      gun.rotation.set(0, 0, 0);
+    }
+    recoilAnim = null;
+  }
+}
+
+// ====== Export & Reset ======
+function exportParams() {
+  const code = 'var GUN_PARAMS = ' + JSON.stringify(params, null, 2) + ';\n';
+  navigator.clipboard.writeText(code).then(() => {
+    showToast('已复制到剪贴板');
+  }).catch(() => {
+    showToast('复制失败');
+  });
+}
+
+function resetParams() {
+  const defaults = JSON.parse(JSON.stringify(DEFAULT_GUN_PARAMS));
+  Object.assign(params.body, defaults.body);
+  Object.assign(params.grip, defaults.grip);
+  Object.assign(params.fpsOffset, defaults.fpsOffset);
+  Object.assign(params.fpsRotation, defaults.fpsRotation);
+  buildControls();
+  refreshGun();
+  showToast('已重置');
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 1400);
+}
+
+// ====== UI Builders ======
+function buildControls() {
+  const container = document.getElementById('controlsContainer');
+  container.innerHTML = '';
+
+  container.appendChild(createPartSection('枪身', params.body, {
+    sizeRange: [0.01, 0.5, 0.005],
+    posRange:  [-0.5, 0.5, 0.005],
+    rotRange:  [-90, 90, 1]
+  }));
+
+  container.appendChild(createPartSection('握把', params.grip, {
+    sizeRange: [0.01, 0.5, 0.005],
+    posRange:  [-0.5, 0.5, 0.005],
+    rotRange:  [-90, 90, 1]
+  }));
+
+  container.appendChild(createFPSOffsetSection());
+}
+
+function createPartSection(title, partData, ranges) {
+  const section = document.createElement('div');
+  section.className = 'part-section';
+
+  const h = document.createElement('div');
+  h.className = 'part-title';
+  h.textContent = title;
+  section.appendChild(h);
+
+  // Size
+  ['x', 'y', 'z'].forEach(axis => {
+    section.appendChild(makeSlider(
+      '尺寸 ' + axis.toUpperCase(), partData.size[axis],
+      ranges.sizeRange[0], ranges.sizeRange[1], ranges.sizeRange[2],
+      v => { partData.size[axis] = v; refreshGun(); }
+    ).row);
+  });
+
+  // Position
+  ['x', 'y', 'z'].forEach(axis => {
+    section.appendChild(makeSlider(
+      '位置 ' + axis.toUpperCase(), partData.position[axis],
+      ranges.posRange[0], ranges.posRange[1], ranges.posRange[2],
+      v => { partData.position[axis] = v; refreshGun(); }
+    ).row);
+  });
+
+  // Rotation (display in degrees, store in radians)
+  ['x', 'y', 'z'].forEach(axis => {
+    const deg = +(partData.rotation[axis] * 180 / Math.PI).toFixed(1);
+    section.appendChild(makeSlider(
+      '旋转 ' + axis.toUpperCase(), deg,
+      ranges.rotRange[0], ranges.rotRange[1], ranges.rotRange[2],
+      v => { partData.rotation[axis] = v * Math.PI / 180; refreshGun(); }
+    ).row);
+  });
+
+  // Color
+  section.appendChild(makeColorPicker('颜色', partData.color, v => {
+    partData.color = v; refreshGun();
+  }).row);
+
+  return section;
+}
+
+function createFPSOffsetSection() {
+  const section = document.createElement('div');
+  section.className = 'part-section';
+
+  const h = document.createElement('div');
+  h.className = 'part-title';
+  h.textContent = 'FPS 视角偏移';
+  section.appendChild(h);
+
+  // Offset
+  ['x', 'y', 'z'].forEach(axis => {
+    section.appendChild(makeSlider(
+      '偏移 ' + axis.toUpperCase(), params.fpsOffset[axis],
+      -1, 1, 0.01,
+      v => { params.fpsOffset[axis] = v; refreshGun(); }
+    ).row);
+  });
+
+  // Rotation
+  ['x', 'y', 'z'].forEach(axis => {
+    const deg = +(params.fpsRotation[axis] * 180 / Math.PI).toFixed(1);
+    section.appendChild(makeSlider(
+      '旋转 ' + axis.toUpperCase(), deg,
+      -180, 180, 1,
+      v => { params.fpsRotation[axis] = v * Math.PI / 180; refreshGun(); }
+    ).row);
+  });
+
+  return section;
+}
+
+function makeSlider(label, value, min, max, step, onChange) {
+  const row = document.createElement('div');
+  row.className = 'slider-row';
+
+  const lbl = document.createElement('span');
+  lbl.className = 'slider-label';
+  lbl.textContent = label;
+
+  const input = document.createElement('input');
+  input.type = 'range';
+  input.min = min; input.max = max; input.step = step;
+  input.value = value;
+
+  const valSpan = document.createElement('span');
+  valSpan.className = 'slider-val';
+  valSpan.textContent = fmtVal(value, step);
+
+  input.addEventListener('input', () => {
+    const v = parseFloat(input.value);
+    valSpan.textContent = fmtVal(v, step);
+    onChange(v);
+  });
+
+  row.appendChild(lbl);
+  row.appendChild(input);
+  row.appendChild(valSpan);
+  return { row, input, valSpan };
+}
+
+function makeColorPicker(label, value, onChange) {
+  const row = document.createElement('div');
+  row.className = 'color-row';
+
+  const lbl = document.createElement('span');
+  lbl.className = 'slider-label';
+  lbl.textContent = label;
+
+  const input = document.createElement('input');
+  input.type = 'color';
+  input.value = value;
+  input.addEventListener('input', () => onChange(input.value));
+
+  row.appendChild(lbl);
+  row.appendChild(input);
+  return { row, input };
+}
+
+function fmtVal(v, step) {
+  if (step >= 1) return Math.round(v).toString();
+  const d = step < 0.01 ? 3 : step < 0.1 ? 2 : 1;
+  return v.toFixed(d);
+}
+
+// ====== Animation Loop ======
+function animate() {
+  requestAnimationFrame(animate);
+  if (controls.enabled) controls.update();
+  updateRecoil();
+  renderer.render(scene, activeCamera);
+}
+
+// ====== Event Bindings ======
+document.querySelectorAll('.mode-btn[data-mode]').forEach(btn => {
+  btn.addEventListener('click', () => switchMode(btn.dataset.mode));
+});
+document.querySelector('.mode-btn[data-action="recoil"]')
+  .addEventListener('click', playRecoil);
+document.getElementById('exportBtn').addEventListener('click', exportParams);
+document.getElementById('resetBtn').addEventListener('click', resetParams);
+
+// ====== Start ======
+init();
+buildControls();
+animate();
+</script>
+</body>
+</html>

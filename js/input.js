@@ -1,36 +1,40 @@
-// ====== Camera Control (mouse look) ======
-// Pointer Lock can report huge movementX/Y on coalesced events.
-// We use getCoalescedEvents() to process each sub-event individually,
-// then cap total frame rotation as a safety net.
-const MAX_FRAME_RADIANS = 15 * Math.PI / 180;          // total frame rotation cap (~15°)
+// ====== Camera Control (mouse look) — INPUT LAYER ======
+// mousemove is a pure data layer: it only samples movement, cleans spikes,
+// and accumulates raw pixels into rawMouse. It never touches sensitivity or camera.
+// The camera is updated once per frame in main.js animate() (consumer).
+
+const CLAMP_MOUSE_DELTA = 800;   // per-event px cap: keep fast flicks responsive
+const DROP_MOUSE_DELTA = 1000;   // extreme pointer-lock spikes are discarded
 
 document.addEventListener('mousemove', (e) => {
   // Allow mouse movement during countdown and playing
   if (!isLocked || (trainState !== 'playing' && trainState !== 'countdown')) return;
 
-  // Process coalesced sub-events if available (Chrome/Edge/Firefox 119+)
-  // Fallback to the single event for unsupported browsers (Safari)
-  const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
-
-  let dYaw = 0, dPitch = 0;
-  for (const ce of events) {
-    dYaw -= ce.movementX * SENSITIVITY * sensitivityMultiplier;
-    dPitch -= ce.movementY * SENSITIVITY * sensitivityMultiplier;
+  // Drop only extreme pointer-lock spikes. Large but plausible fast flicks are
+  // clamped instead of discarded, avoiding sticky low-sensitivity swipes.
+  let mx = e.movementX;
+  let my = e.movementY;
+  if (
+    Math.abs(mx) > DROP_MOUSE_DELTA ||
+    Math.abs(my) > DROP_MOUSE_DELTA
+  ) {
+    return;
   }
 
-  // Safety: cap total frame rotation to prevent extreme jumps
-  dYaw = Math.max(-MAX_FRAME_RADIANS, Math.min(MAX_FRAME_RADIANS, dYaw));
-  dPitch = Math.max(-MAX_FRAME_RADIANS, Math.min(MAX_FRAME_RADIANS, dPitch));
+  mx = Math.max(-CLAMP_MOUSE_DELTA, Math.min(CLAMP_MOUSE_DELTA, mx));
+  my = Math.max(-CLAMP_MOUSE_DELTA, Math.min(CLAMP_MOUSE_DELTA, my));
 
-  yaw += dYaw;
-  pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch + dPitch));
-  camera.rotation.set(pitch, yaw, 0);
+  // Accumulate cleaned raw pixels; sensitivity is applied in animate().
+  rawMouse.dx += mx;
+  rawMouse.dy += my;
 });
 
 // FIX: Use pointerlockchange to detect ESC (single press)
 document.addEventListener('pointerlockchange', () => {
   const wasLocked = isLocked;
   isLocked = document.pointerLockElement === renderer.domElement;
+
+  if (wasLocked && !isLocked) clearInputBuffer();
 
   // If pointer lock was lost while playing or countdown → pause
   if (wasLocked && !isLocked && (trainState === 'playing' || trainState === 'countdown')) {
@@ -40,7 +44,7 @@ document.addEventListener('pointerlockchange', () => {
   // Show crosshair when locked during playing or countdown
   const showCrosshair = isLocked && (trainState === 'playing' || trainState === 'countdown');
   document.getElementById('crosshairCanvas').style.display = showCrosshair ? 'block' : 'none';
-  document.body.classList.toggle('playing', isLocked);
+  document.body.classList.toggle('playing', showCrosshair);
 });
 
 // ====== Clicking / Shooting ======
@@ -55,24 +59,6 @@ if (renderer) {
     // Block shooting during countdown
     if (e.button !== 0 || trainState !== 'playing' || !isLocked) return;
 
-    const now = performance.now();
-
-    raycaster.setFromCamera({ x: 0, y: 0 }, camera);
-    const intersects = raycaster.intersectObjects(targets);
-
-    if (lastShotTime > 0) {
-      reactionTimes.push(now - lastShotTime);
-    }
-
-    if (intersects.length > 0) {
-      score++;
-      hits++;
-      playHitSound();
-      resetTarget(intersects[0].object);
-    } else {
-      misses++;
-    }
-    lastShotTime = now;
-    updateHUD();
+    handlePrimaryShot();
   });
 }
