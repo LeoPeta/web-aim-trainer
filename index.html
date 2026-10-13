@@ -10,9 +10,12 @@
 
     #ui {
       position: fixed; top: 14px; left: 0; right: 0;
-      text-align: center; color: #aaa; font-size: 18px;
+      color: #aaa; font-size: 18px;
       letter-spacing: 2px; pointer-events: none; z-index: 50;
-      display: flex; justify-content: center; gap: 40px;
+    }
+    /* HUD row is rebuilt per mode (see hud.js renderHUD) */
+    #hudRow {
+      display: flex; justify-content: center; gap: 40px; text-align: center;
     }
     .hud-val { color: #fff; }
     #timer {
@@ -53,6 +56,109 @@
     }
     .setting-group.disabled { opacity: 0.35; pointer-events: none; }
     .setting-label { font-size: 13px; color: #666; letter-spacing: 1px; }
+    .setting-hint { font-size: 11px; color: #777; margin-top: 4px; letter-spacing: 0.5px; }
+    .fov-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+    .fov-axis { font-size: 11px; color: #888; letter-spacing: 1px; margin-right: 8px; }
+    /* tab 条：固定在设置面板顶部，左对齐，超宽时左右箭头滚动。
+       全部限定在 .mode-settings-area 作用域内，以压过 .overlay-base button
+       带来的圆角/边框/padding（否则 tab 会带上 6px 圆角）。 */
+    .mode-settings-area .mode-tabbar {
+      display: flex;
+      align-items: stretch;
+      flex-shrink: 0;
+      border-bottom: 1px solid #555;
+    }
+    .mode-settings-area .tab-arrow {
+      flex-shrink: 0;
+      width: 28px;
+      padding: 0;
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      color: #aaa;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    .mode-settings-area .tab-arrow.visible { display: flex; }
+    .mode-settings-area .tab-arrow.disabled { opacity: 0.3; pointer-events: none; }
+    .mode-settings-area .tab-arrow:hover { color: #fff; background: rgba(255,255,255,0.05); }
+    .mode-settings-area #tabPrev { border-right: 1px solid #555; }
+    .mode-settings-area #tabNext { border-left: 1px solid #555; }
+    .mode-settings-area .mode-tabs {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      scrollbar-width: none;
+    }
+    .mode-settings-area .mode-tabs::-webkit-scrollbar { display: none; }
+    .mode-settings-area .mode-tabs button {
+      flex-shrink: 0;
+      white-space: nowrap;
+      padding: 10px 16px;
+      font-size: 13px;
+      border: none;
+      border-radius: 0;
+      border-right: 1px solid #555;
+      background: transparent;
+      color: #ccc;
+      cursor: pointer;
+      letter-spacing: 1px;
+    }
+    .mode-settings-area .mode-tabs button:hover { color: #fff; background: rgba(255,255,255,0.05); }
+    .mode-settings-area .mode-tabs button.active {
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+    }
+    /* 设置面板：tab 条固定顶部，内容区独立滚动 */
+    .mode-settings-area {
+      width: 420px;
+      height: 300px;
+      border: 1px solid #555;
+      border-radius: 4px;
+      box-sizing: border-box;
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .mode-settings-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+    }
+    .mode-settings-area .setting-group {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .mode-settings-area .setting-label {
+      width: 76px;
+      flex-shrink: 0;
+      font-size: 13px;
+      color: #666;
+      letter-spacing: 1px;
+    }
+    .setting-select {
+      flex: 1;
+      height: 30px;
+      background: #222;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-family: inherit;
+      font-size: 13px;
+      letter-spacing: 0.5px;
+      outline: none;
+    }
+    .setting-select:focus { border-color: #aaa; }
+    .mode-settings-area #modeHint { margin-top: 12px; }
     .setting-btns { display: flex; gap: 8px; }
     .sensitivity-slider {
       -webkit-appearance: none; appearance: none;
@@ -166,9 +272,7 @@
 <body>
 
 <div id="ui">
-  <div>得分 <span class="hud-val" id="scoreText">0</span></div>
-  <div>命中 <span class="hud-val" id="hitsText">0</span></div>
-  <div>未中 <span class="hud-val" id="missesText">0</span></div>
+  <div id="hudRow"></div>
 </div>
 <div id="timer">⏱ 60</div>
 <div id="fps" style="position:fixed;top:14px;left:20px;color:#555;font-size:13px;pointer-events:none;z-index:50;font-family:'Courier New',monospace;"></div>
@@ -193,14 +297,19 @@
       onfocus="this.select()"
       onkeydown="if(event.key==='Enter')this.blur()"
       onblur="validateSensitivity(this)">
+    <div class="setting-hint">基础灵敏度 yaw = 0.07°/count = 0.07×π/180 ≈ 0.001222 rad/px</div>
   </div>
 
   <div class="setting-group">
-    <div class="setting-label">水平视野 hFOV</div>
+    <div class="setting-label">视野 FOV（16:9）</div>
     <input type="range" class="sensitivity-slider" id="fovSlider"
       min="85" max="120" step="1" value="103"
       oninput="setCameraFov(this.value)">
-    <span class="sensitivity-val" id="fovVal">103</span>
+    <div class="fov-row">
+      <span class="sensitivity-val" id="fovVal">103</span><span class="fov-axis">h</span>
+      <span class="sensitivity-val" id="fovVVal">70.5</span><span class="fov-axis">v</span>
+    </div>
+    <div class="setting-hint">hFOV / vFOV 按 16:9 换算；实际画面按屏幕比例</div>
   </div>
 </div>
 
@@ -208,48 +317,15 @@
 <div id="gameplayOverlay" class="overlay-base hidden">
   <h1>玩法设置</h1>
 
-  <div class="setting-group">
-    <div class="setting-label">训练模式</div>
-    <div class="setting-btns" id="modeBtns">
-      <button class="active" onclick="setTrainingMode('classic')">3球网格射击</button>
-      <button onclick="setTrainingMode('sixBall')">六球定位</button>
+  <div class="mode-settings-area">
+    <div class="mode-tabbar">
+      <button class="tab-arrow" id="tabPrev" onclick="scrollModeTabs(-1)">‹</button>
+      <div class="mode-tabs" id="modeTabs" onscroll="updateTabArrows()"></div>
+      <button class="tab-arrow" id="tabNext" onclick="scrollModeTabs(1)">›</button>
     </div>
-    <div class="setting-label" id="modeHint"></div>
-  </div>
-
-  <div class="setting-group" id="distGroup">
-    <div class="setting-label">目标距离</div>
-    <div class="setting-btns" id="distBtns">
-      <button class="active" onclick="setDist('near')">近 (8m)</button>
-      <button onclick="setDist('mid')">中 (12m)</button>
-      <button onclick="setDist('far')">远 (16m)</button>
-    </div>
-  </div>
-
-  <div class="setting-group" id="sizeGroup">
-    <div class="setting-label">目标大小</div>
-    <div class="setting-btns" id="sizeBtns">
-      <button class="active" onclick="setSize('big')">大</button>
-      <button onclick="setSize('mid')">中</button>
-      <button onclick="setSize('small')">小</button>
-      <button onclick="setSize('tiny')">极小</button>
-    </div>
-  </div>
-
-  <div class="setting-group">
-    <div class="setting-label">训练时间</div>
-    <div class="setting-btns" id="timeBtns">
-      <button onclick="setTime(30)">30秒</button>
-      <button class="active" onclick="setTime(60)">1分钟</button>
-      <button onclick="setTime(120)">2分钟</button>
-    </div>
-  </div>
-
-  <div class="setting-group" id="gridGroup">
-    <div class="setting-label">目标布局</div>
-    <div class="setting-btns" id="gridBtns">
-      <button class="active" onclick="setGrid('3x3')">9宫格</button>
-      <button onclick="setGrid('5x5')">25宫格</button>
+    <div class="mode-settings-scroll">
+      <div id="modeSettingsContainer"></div>
+      <div class="setting-label" id="modeHint"></div>
     </div>
   </div>
 
@@ -325,19 +401,14 @@
 <div id="endOverlay" class="overlay-base hidden">
   <h1>⏱ 训练结束</h1>
   <div class="final-score" id="finalScore">0</div>
-  <div class="stats-grid">
-    <div class="stat-item"><div class="stat-val" id="statHits">0</div><div class="stat-label">命中</div></div>
-    <div class="stat-item"><div class="stat-val" id="statMisses">0</div><div class="stat-label">未中</div></div>
-    <div class="stat-item"><div class="stat-val" id="statAccuracy">0%</div><div class="stat-label">命中率</div></div>
-    <div class="stat-item"><div class="stat-val" id="statReaction">0ms</div><div class="stat-label">平均反应时长</div></div>
-  </div>
+  <div class="stats-grid" id="statsGrid"></div>
   <div class="charts-row" id="chartsRow">
     <div class="chart-section">
       <div class="chart-legend"><span class="legend-score">综合得分趋势</span></div>
       <canvas id="chartCanvas" width="360" height="180"></canvas>
     </div>
     <div class="chart-section">
-      <div class="chart-legend"><span class="legend-acc">命中率趋势</span></div>
+      <div class="chart-legend"><span class="legend-acc" id="legendAcc">命中率趋势</span></div>
       <canvas id="chartCanvasAcc" width="360" height="180"></canvas>
     </div>
   </div>
@@ -364,6 +435,7 @@
 <script src="js/modes/registry.js"></script>
 <script src="js/modes/classic.js"></script>
 <script src="js/modes/six-ball.js"></script>
+<script src="js/modes/tracking.js"></script>
 <script src="js/scoring/general-score.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/targets.js"></script>
@@ -379,6 +451,9 @@
 <script>
   // Restore user preferences (crosshair, sensitivity, training params) from localStorage
   loadPreferences();
+  // Build the HUD row for the restored mode
+  renderHUD();
+  updateHUD();
   // Start the main loop after all modules loaded
   requestAnimationFrame(animate);
 </script>

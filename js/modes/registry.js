@@ -42,6 +42,16 @@ function getModeId() {
   return mode.getModeId ? mode.getModeId() : '';
 }
 
+// Dispatch an optional per-mode hook. Returns true if the active mode
+// implements it, so callers can fall back to their default behaviour.
+function callModeHook(name, ...args) {
+  const mode = getActiveModeConfig();
+  const fn = mode[name];
+  if (typeof fn !== 'function') return false;
+  fn(...args);
+  return true;
+}
+
 function getModeLabel(modeId) {
   for (const id in TRAINING_MODES) {
     const mode = TRAINING_MODES[id];

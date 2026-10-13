@@ -45,7 +45,7 @@ web-aim-trainer/
 │   ├── hud.js             ← 屏幕 HUD 更新
 │   ├── sound.js           ← 击中音效（Web Audio API）
 │   ├── training.js        ← 训练状态机
-│   ├── input.js           ← 鼠标输入层（buffer 累加，不碰相机）
+│   ├── input.js           ← 鼠标输入层（200px 尖峰过滤 + 累加原始像素到 pendingMouseX/Y，不碰相机）
 │   └── preferences.js     ← 用户设置 localStorage 持久化
 └── gun-editor/            ← 独立枪械模型编辑器（暂存，未集成进游戏）
     ├── gun-editor.html    ← 编辑器页面（自由视角 / 第一人称预览 / 参数导出）
@@ -61,7 +61,7 @@ web-aim-trainer/
 | 文件 | 行数 | 职责 |
 |------|------|------|
 | **`index.html`** | ~386 | HTML 结构（5 个 overlay：主菜单 / 玩法设置 / 准心设置 / 暂停 / 结束）+ CSS 样式 + 按顺序引入核心 / modes / scoring JS 模块 |
-| **`main.js`** | ~156 | 全局共享变量声明（`scene` / `camera` / `trainState` / `cameraFov` / `rawMouse` / `activeTargets` 等）、hFOV→vFOV 换算、主渲染循环 `animate`（含倒计时递减 + raw input 消费层 + 渲染状态门控）、FPS 计数、窗口 resize |
+| **`main.js`** | ~176 | 全局共享变量声明（`scene` / `camera` / `trainState` / `cameraFov` / `pendingMouseX/Y` / `activeTargets` 等）、hFOV→vFOV 换算、主渲染循环 `animate`（含倒计时递减 + `processMouseMovement()` 每帧消费 + 渲染状态门控）、FPS 计数、窗口 resize |
 
 ### 渲染层
 
@@ -75,7 +75,7 @@ web-aim-trainer/
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| **`settings.js`** | ~102 | 训练模式、距离 / 大小 / 时长 / 宫格 / 灵敏度（0.1-2.00，默认 0.5，数值对应 Valorant sens）/ hFOV（85°~120°，默认 103°），含 UI 切换函数 |
+| **`settings.js`** | ~130 | **玩法设置（模式 tab + 每模式独立值）**：`MODE_SETTINGS` per-mode 槽、`renderModeTabs()` / `renderModeSettings()` 按 `mode.settingGroups` 配置驱动渲染、`setModeSetting()` / `setTrainingMode()`；全局灵敏度（0.1-2.00，默认 0.5，数值对应 Valorant sens）/ hFOV（85°~120°，默认 103°） |
 | **`history.js`** | ~34 | localStorage 读写、保存记录、按模式筛选记录；模式 ID/Label 已迁移到 `js/modes/` |
 | **`modes/registry.js`** | ~53 | 模式注册表，提供 `getModeId()` / `getModeLabel()` / `resetTarget()` / 有效参数分发 |
 | **`modes/classic.js`** | ~87 | 标准 3 球网格模式：网格生成、slot 排重、经典 modeId/label |
@@ -91,8 +91,8 @@ web-aim-trainer/
 | **`hud.js`** | ~6 | 实时更新屏幕顶部得分 / 命中 / 未中 |
 | **`sound.js`** | ~31 | Web Audio API 合成击中音效（600→250Hz 正弦波，80ms 衰减），`initAudio()` 预热 AudioContext |
 | **`training.js`** | ~114 | 状态机：`startTraining`（调用当前模式准备目标 + 3 秒倒计时）/ `pauseTraining` / `resumeTraining` / `endTraining` / `backToMenu`，负责状态切换时清空输入和更新 renderer 可见性 |
-| **`input.js`** | ~64 | **输入层**：`mousemove` 只采样+清洗尖峰+累加 raw pixels 到 `rawMouse`（不碰灵敏度/相机）、pointer lock 丢失时清空 buffer、`mousedown` 只做状态 guard 并调用 `handlePrimaryShot()` |
-| **`preferences.js`** | ~116 | `savePreferences()` / `loadPreferences()`：训练模式、训练参数、灵敏度、hFOV、准心设置自动持久化到 localStorage（key: `aimTrainerPrefs`），下次打开自动恢复 |
+| **`input.js`** | ~49 | **输入层**：`mousemove` 累加 raw pixel delta 到 `pendingMouseX/Y`，单事件 `>200px` 尖峰丢弃（CS 式）、不碰灵敏度/相机、pointer lock 丢失时清空 pending、`mousedown` 只做状态 guard 并调用 `handlePrimaryShot()` |
+| **`preferences.js`** | ~95 | `savePreferences()` / `loadPreferences()`：`modeSettings`（每模式独立值）+ `currentTrainingMode` + 灵敏度/hFOV/准心设置持久化到 localStorage（key: `aimTrainerPrefs`），旧版顶层值自动迁移进 classic 槽，下次打开自动恢复 |
 
 ---
 
@@ -111,7 +111,7 @@ scene.js  → 创建 scene/camera/renderer/raycaster
   ↓
 modes/* + scoring/* → 注册训练模式、模式 ID/Label、计分/射击处理函数
   ↓
-settings.js → currentDist=8、currentRadius=0.45、currentTrainingMode='classic' 等默认值
+settings.js → 全局默认值 currentDist=8 / currentRadius=0.45 / currentGrid='3x3' + MODE_SETTINGS per-mode 槽（classic/sixBall 各自独立）
   ↓
 targets.js  → 立即执行：创建最多 6 个球体加入 scene，按当前模式激活 3 或 6 个
   ↓
@@ -135,9 +135,9 @@ requestAnimationFrame(animate) → 主循环开始
   ↓
 倒计时归零 → trainState = 'playing'
   ↓
-[每帧] animate() → countdown/playing: 计时 + 消费 rawMouse 并应用灵敏度 + camera.rotation + Three.js 渲染；paused/over: 保留最后一帧不连续渲染；menu: 隐藏 canvas 不渲染
+[每帧] animate() → countdown/playing: 计时 + 无条件调用 processMouseMovement()（消费 pendingMouseX/Y 并应用灵敏度 + camera.rotation）+ Three.js 渲染；paused/over: 保留最后一帧不连续渲染；menu: 隐藏 canvas 不渲染
 [点击] mousedown → raycaster 检测命中 → 得分 + playHitSound() + resetTarget / 累计未中
-[移动] mousemove → 采样+清洗尖峰 → 累加 raw pixels 到 rawMouse（不碰灵敏度/相机）
+[移动] mousemove → 单事件 >200px 尖峰丢弃，否则累加到 pendingMouseX/Y（不碰灵敏度/相机）
 [ESC]  pointerlockchange → 自动调用 pauseTraining()
   ↓
 训练计时归零 → endTraining()
@@ -212,33 +212,39 @@ reactionFactor 采用非对称高斯，峰值在 220ms：
 
 ## 🖱️ 输入系统
 
-### 三层架构
+### 两段式架构（CS 同款）
 
-输入系统采用类似主流 FPS 的分层结构：**输入层只累加，主循环每帧统一消费**。
+输入系统采用主流 FPS 的分层结构：**输入层只累加，主循环每帧统一消费**。
 
 ```
 Input Event(mousemove)
   ↓
 输入层 input.js
   - 检查 pointer lock + 状态
-  - `|movementX/Y| > 1000px` 的极端尖峰直接丢弃
-  - `800px ~ 1000px` 的大位移限幅到 800px，避免低灵敏度快甩粘滞
-  - 累加 raw pixels 到 rawMouse.dx / rawMouse.dy
+  - 读取 movementX / movementY，单事件 >200px 尖峰丢弃
+  - 累加到 pendingMouseX / pendingMouseY
   - 不做灵敏度换算，不修改 yaw/pitch，不写 camera
   ↓
-Raw Mouse Buffer(main.js)
-  - const rawMouse = { dx: 0, dy: 0 }
-  ↓
-每帧 animate()
-  - 读 rawMouse
-  - 立即清零 buffer
-  - 在 camera 消费层计算 radPerPx = SENSITIVITY × sensitivityMultiplier
-  - yaw -= dx × radPerPx
-  - pitch -= dy × radPerPx，并 clamp 到 ±89°
-  - camera.rotation.set(pitch, yaw, 0)
+每帧 animate() → processMouseMovement()（无条件调用）
+  - pending 为 0 直接返回（非锁定/菜单时是廉价 no-op）
+  - 一次性消费：radPerPx = SENSITIVITY × sensitivityMultiplier
+  - yaw -= pendingMouseX × radPerPx
+  - pitch -= pendingMouseY × radPerPx，并 clamp 到 ±89°
+  - camera.rotation.y = yaw; camera.rotation.x = pitch
+  - 消费后 pendingMouseX / pendingMouseY 清零
 ```
 
-这样可以避免在高频 mousemove 回调里直接写相机，保证相机只在 render tick 中更新一次，输入采样与相机系统解耦。
+### 尖峰过滤
+
+```js
+const movementX = e.movementX || 0;
+const movementY = e.movementY || 0;
+if (Math.abs(movementX) > 200 || Math.abs(movementY) > 200) return;  // 单事件尖峰丢弃
+pendingMouseX += movementX;
+pendingMouseY += movementY;
+```
+
+单次异常大的 mousemove（系统唤醒、pointer lock 重入等）会在输入层被直接丢弃，避免视角瞬移。消费层不做限幅——与 CS 一致，pending 多大就放多大，保证手感完全对应。
 
 ### 灵敏度公式
 
@@ -246,16 +252,15 @@ Raw Mouse Buffer(main.js)
 SENSITIVITY = 0.07 * Math.PI / 180;  // ≈ 0.001222 rad/px
 radPerPx = SENSITIVITY * sensitivityMultiplier;
 
-yaw   -= rawMouse.dx * radPerPx;
-pitch -= rawMouse.dy * radPerPx;
+yaw   -= pendingMouseX * radPerPx;
+pitch -= pendingMouseY * radPerPx;
 ```
 
 | 参数 | 值 | 说明 |
 |------|-----|------|
-| `SENSITIVITY` | `0.07°` 转弧度 | Valorant yaw 常量，sens=1 时每 count/px 转 0.07° |
+| `SENSITIVITY` | `0.07°` 转弧度（≈0.001222 rad/px） | Valorant yaw 常量，sens=1 时每 count/px 转 0.07°；设置页已展示 |
 | `sensitivityMultiplier` | 0.1 ~ 2.00，默认 0.5 | UI 滑块值，直接对应 Valorant sensitivity |
-| `CLAMP_MOUSE_DELTA` | 800px | 单事件大位移限幅阈值，保留快甩但削顶 |
-| `DROP_MOUSE_DELTA` | 1000px | 极端 Pointer Lock 尖峰丢弃阈值 |
+| 输入限制 | `>200px` 单事件丢弃 | `input.js` 尖峰过滤，其余 raw delta 原样累加 |
 | `PITCH_LIMIT` | ±89° | 防止垂直视角翻转 |
 
 匹配 Valorant 的前提：Windows 指针速度保持默认 6/11，并关闭鼠标加速。浏览器无法读取 raw input 或系统鼠标加速状态，因此这是 Web 环境下的近似 1:1 匹配。
@@ -321,15 +326,16 @@ FPS 视角使用 `YXZ` 顺序：水平 yaw 与垂直 pitch 解耦，避免 `XYZ`
 ### 想新增训练模式？
 
 1. 在 `js/modes/` 新增模式文件（如 `tracking-horizontal.js`）
-2. 在新文件中调用 `registerTrainingMode({...})`
-3. 模式文件自己提供 target count、有效参数、`prepareTargets()`、`resetTarget()`、`getModeId()`、`getModeLabel()`
+2. 调用 `registerTrainingMode({...})`，声明 `id` / `label` / `targetCount` / `hint` / `settingGroups`（设置组：key + label + options[{id,label,value}] + apply）
+3. 模式文件提供 `prepareTargets()`、`resetTarget()`、`getModeId()`、`getModeLabel()` 等
 4. 如是点击类模式，复用 `js/scoring/click-scoring.js` / `general-score.js`
-5. 在 `index.html` 增加模式按钮，并在脚本区引入新模式文件
+5. **玩法设置的 tab 和设置面板自动生成**（`settings.js` 按 `settingGroups` 渲染），无需改 HTML；只需在 `index.html` 脚本区引入新模式文件
+6. 每模式设置值自动获得独立存储槽（`ensureModeSettings` 按 `settingGroups` 默认值初始化）
 
 ### 想新增训练参数？
 
-1. 全局参数：在 `settings.js` 添加变量 + `setXxx()` 函数，并在 `preferences.js` 持久化
-2. 模式专属参数：优先放在对应 `js/modes/*.js`，由模式的有效参数/helper 使用
+1. **模式专属参数**：在模式文件的 `settingGroups` 数组里加一个 group（key + label + options + apply），玩法设置自动渲染、自动独立存储
+2. 全局参数（如灵敏度/hFOV）：在 `settings.js` 添加变量 + `setXxx()` 函数，并在 `preferences.js` 持久化
 3. 如参数影响历史分组，在对应模式的 `getModeId()` / `getModeLabel()` 中编码
 
 ### 想新增准心样式？
@@ -351,15 +357,16 @@ FPS 视角使用 `YXZ` 顺序：水平 yaw 与垂直 pitch 解耦，避免 `XYZ`
 
 - **状态机**：`trainState` 取值 `'menu' | 'countdown' | 'playing' | 'paused' | 'over'`，所有 UI 切换围绕这个变量
 - **多模式架构**：`js/modes/registry.js` 负责模式注册与分发，具体模式逻辑放在 `js/modes/*.js`，避免在 `training.js` / `targets.js` 堆叠模式 if/else
+- **Per-mode 设置**：玩法设置采用「模式 tab + 配置驱动面板」——每个模式在 `settingGroups` 里声明自己的设置组，`settings.js` 通用渲染；`MODE_SETTINGS` 每模式独立存值，切 tab 互不干扰，新模式自动建槽（`ensureModeSettings`）
 - **计分拆分**：综合得分公式放在 `js/scoring/general-score.js`，点击命中处理放在 `js/scoring/click-scoring.js`
 - **渲染状态门控**：menu 隐藏 Three.js canvas 且不 render；countdown/playing 连续 render；paused/over 保留最后一帧但停止连续 WebGL render；RAF 主循环仍继续运行
-- **rawMouse buffer 清理**：状态切换、pointer lock 丢失、非 active 状态都会清空 `rawMouse`，避免暂停/恢复后消费陈旧鼠标增量
+- **pending 清理**：状态切换、pointer lock 丢失都会清空 `pendingMouseX/Y`，避免暂停/恢复后残留鼠标位移
 - **准心抗畸形**：所有需要居中的尺寸（线宽、中心点）强制偶数物理像素，保证 `cx - lw/2` 永远是整数
 - **DPI 适配**：准心 canvas 尺寸 = CSS 尺寸 × `devicePixelRatio`，绘制时切换至物理像素坐标系
 - **射击精度**：`raycaster.setFromCamera({x:0, y:0}, camera)` 始终从屏幕几何中心发射，与准心绘制位置无关
 - **球体重置**：通过 `oldSlot` 记忆 + 排除，确保命中后球体一定移到不同格子
-- **输入系统架构**：`mousemove` 为纯输入层（采样+清洗+累加 raw pixels），不碰灵敏度/相机；`animate()` 主循环每帧统一消费 `rawMouse`，应用灵敏度后写入 `camera.rotation`
-- **尖峰处理**：输入层采用双阈值策略，`800px~1000px` 大位移限幅保留快甩响应，`>1000px` 极端 Pointer Lock 尖峰直接丢弃
+- **输入系统架构**：`mousemove` 为纯 raw 输入层（累加原始像素到 `pendingMouseX/Y`，单事件 `>200px` 尖峰丢弃），不碰灵敏度/相机；`animate()` 主循环每帧无条件调用 `processMouseMovement()` 一次性消费 pending 并清零
+- **尖峰处理**：输入层单事件 `>200px` 直接丢弃（CS 式）；消费层不做限幅，与 CS 手感保持一致
 - **灵敏度匹配**：`SENSITIVITY = 0.07 × π/180`（Valorant yaw 常量），滑块值即 Valorant sensitivity，1:1 对应
 - **相机旋转顺序**：`rotation.order = 'YXZ'`，FPS 标准顺序，yaw/pitch 独立不干扰
 - **hFOV 更新**：UI 数值表示水平 FOV；应用到 Three.js 前先根据 `aspect` 换算为垂直 FOV，再调用 `camera.updateProjectionMatrix()`

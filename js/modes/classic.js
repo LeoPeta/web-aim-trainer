@@ -75,13 +75,56 @@ registerTrainingMode({
   id: 'classic',
   label: '3球网格射击',
   targetCount: 3,
-  locksCustomSettings: false,
   hint: '',
+  settingGroups: [
+    {
+      key: 'distance',
+      label: '目标距离',
+      options: [
+        { id: 'near', label: '近 (8m)', value: 8 },
+        { id: 'mid', label: '中 (12m)', value: 12 },
+        { id: 'far', label: '远 (16m)', value: 16 },
+      ],
+      apply: v => { currentDist = v; },
+    },
+    {
+      key: 'size',
+      label: '目标大小',
+      options: [
+        { id: 'big', label: '大', value: 0.45 },
+        { id: 'mid', label: '中', value: 0.35 },
+        { id: 'small', label: '小', value: 0.25 },
+        { id: 'tiny', label: '极小', value: 0.15 },
+      ],
+      apply: v => { currentRadius = v; },
+    },
+    {
+      key: 'grid',
+      label: '目标布局',
+      options: [
+        { id: '3x3', label: '9宫格', value: '3x3' },
+        { id: '5x5', label: '25宫格', value: '5x5' },
+      ],
+      apply: v => { currentGrid = v; },
+    },
+    {
+      key: 'time',
+      label: '训练时间',
+      options: [
+        { id: '30', label: '30秒', value: 30 },
+        { id: '60', label: '1分钟', value: 60 },
+        { id: '120', label: '2分钟', value: 120 },
+      ],
+      apply: v => { totalTime = v; },
+    },
+  ],
   getRadius: () => currentRadius,
   getDistance: () => currentDist,
   prepareTargets: prepareClassicTargets,
   resetTarget: resetClassicTarget,
   getModeId: getClassicModeId,
-  matchesModeId: modeId => !modeId.startsWith('6B-'),
+  // Classic is the catch-all for every non-prefixed modeId (legacy records
+  // look like "N-B-60-9"), so it must explicitly exclude other modes' prefixes.
+  matchesModeId: modeId => !modeId.startsWith('6B-') && !modeId.startsWith('TRK-'),
   getModeLabel: getClassicModeLabel
 });

@@ -12,6 +12,9 @@ let scene, camera, renderer, targets = [];
 
 // Camera control state
 let yaw = 0, pitch = 0, isLocked = false;
+// Pending mouse deltas — input.js accumulates raw pixels here (CS-style);
+// processMouseMovement() consumes and resets them once per frame.
+let pendingMouseX = 0, pendingMouseY = 0;
 let cameraFov = 103;  // horizontal FOV (hFOV) shown in UI
 
 function horizontalToVerticalFov(hFov, aspect) {
@@ -31,10 +34,6 @@ function applyCameraFov() {
 const SENSITIVITY = 0.07 * Math.PI / 180;
 const PITCH_LIMIT = 89 * Math.PI / 180;
 
-// Raw mouse delta buffer — input.js writes cleaned pixels, animate() consumes
-// them once per frame and applies sensitivity in the camera layer.
-const rawMouse = { dx: 0, dy: 0 };
-
 function shouldShowRenderer() {
   return trainState !== 'menu';
 }
@@ -53,8 +52,21 @@ function updateRendererVisibility() {
 }
 
 function clearInputBuffer() {
-  rawMouse.dx = 0;
-  rawMouse.dy = 0;
+  pendingMouseX = 0;
+  pendingMouseY = 0;
+}
+
+function processMouseMovement() {
+  if (pendingMouseX === 0 && pendingMouseY === 0) return;
+  const radPerPx = getMouseRadPerPx();
+  yaw -= pendingMouseX * radPerPx;
+  pitch -= pendingMouseY * radPerPx;
+  pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch));
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y = yaw;
+  camera.rotation.x = pitch;
+  pendingMouseX = 0;
+  pendingMouseY = 0;
 }
 
 function getMouseRadPerPx() {
@@ -107,6 +119,9 @@ function animate(time) {
   }
 
   if (trainState === 'playing') {
+    // Per-mode per-frame hook (e.g. tracking moves the target and scores by aim)
+    callModeHook('onFrame', dt);
+
     timeLeft -= dt;
     const timerEl = document.getElementById('timer');
     timerEl.textContent = '⏱ ' + Math.ceil(Math.max(0, timeLeft));
@@ -115,23 +130,10 @@ function animate(time) {
     if (timeLeft <= 0) endTraining();
   }
 
-  // Consume raw mouse pixels once per frame → apply sensitivity → update camera.
-  // Input is cleaned at the source (input.js), but sensitivity is applied here
-  // to keep the input layer raw and avoid double-scaling.
-  // Single threaded: read-then-zero is safe, no input lost between the two lines.
-  if (isLocked && (trainState === 'playing' || trainState === 'countdown')) {
-    const dx = rawMouse.dx;
-    const dy = rawMouse.dy;
-    rawMouse.dx = 0;
-    rawMouse.dy = 0;
-
-    const radPerPx = getMouseRadPerPx();
-    yaw -= dx * radPerPx;
-    pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch - dy * radPerPx));
-    camera.rotation.set(pitch, yaw, 0);
-  } else {
-    clearInputBuffer();
-  }
+  // Consume accumulated mouse deltas once per frame (CS-style): apply pending
+  // deltas to camera, then reset. input.js guards event recording, so pending
+  // is normally 0 outside locked gameplay and this call is a cheap no-op.
+  processMouseMovement();
 
   updateRendererVisibility();
   if (shouldRenderScene()) renderSceneOnce();

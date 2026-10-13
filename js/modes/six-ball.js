@@ -68,8 +68,19 @@ registerTrainingMode({
   id: 'sixBall',
   label: '六球定位',
   targetCount: 6,
-  locksCustomSettings: true,
   hint: '固定: 6球 / 超远20m / 极小 / 随机大范围',
+  settingGroups: [
+    {
+      key: 'time',
+      label: '训练时间',
+      options: [
+        { id: '30', label: '30秒', value: 30 },
+        { id: '60', label: '1分钟', value: 60 },
+        { id: '120', label: '2分钟', value: 120 },
+      ],
+      apply: v => { totalTime = v; },
+    },
+  ],
   getRadius: () => 0.15,
   getDistance: () => 20,
   prepareTargets: prepareSixBallTargets,

@@ -1,20 +1,13 @@
 // ====== User Preferences (localStorage persistence) ======
 const PREFS_KEY = 'aimTrainerPrefs';
 
-// Helper: find and activate the button matching a value within a button group
-function activateBtnByText(containerId, predicate) {
-  const btns = document.getElementById(containerId).querySelectorAll('button');
-  btns.forEach(b => {
-    b.classList.toggle('active', predicate(b));
-  });
-}
-
 function savePreferences() {
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify({
-      // Training params
+      // Per-mode training settings (each mode keeps its own values)
+      modeSettings: MODE_SETTINGS,
       currentTrainingMode,
-      currentDist, currentRadius, totalTime, currentGrid,
+      // Global settings
       sensitivityMultiplier, cameraFov,
       // Crosshair params
       crosshairColor, crosshairLen, crosshairGap, crosshairBorder, crosshairDot,
@@ -29,38 +22,38 @@ function loadPreferences() {
   } catch (e) { prefs = null; }
   if (!prefs) return;
 
-  // ----- Training mode -----
-  if (typeof prefs.currentTrainingMode === 'string' && TRAINING_MODES[prefs.currentTrainingMode]) {
-    currentTrainingMode = prefs.currentTrainingMode;
-    activateBtnByText('modeBtns', b =>
-      (currentTrainingMode === 'classic' && b.textContent === '3球网格射击') ||
-      (currentTrainingMode === 'sixBall' && b.textContent === '六球定位')
-    );
+  // ----- Per-mode settings -----
+  if (prefs.modeSettings && typeof prefs.modeSettings === 'object') {
+    // Iterate registered modes (not MODE_SETTINGS keys) so modes added later —
+    // whose slot is created lazily by ensureModeSettings — still restore.
+    for (const id in TRAINING_MODES) {
+      ensureModeSettings(id);
+      if (prefs.modeSettings[id] && typeof prefs.modeSettings[id] === 'object') {
+        MODE_SETTINGS[id] = { ...MODE_SETTINGS[id], ...prefs.modeSettings[id] };
+      }
+    }
+  } else {
+    // Legacy top-level values (currentDist/currentRadius/currentGrid/totalTime)
+    // migrate into the classic mode slot so existing settings are preserved.
+    const distMap = { 8: 'near', 12: 'mid', 16: 'far' };
+    const sizeMap = { 0.45: 'big', 0.35: 'mid', 0.25: 'small', 0.15: 'tiny' };
+    if (typeof prefs.currentDist === 'number' && distMap[prefs.currentDist]) {
+      MODE_SETTINGS.classic.distance = distMap[prefs.currentDist];
+    }
+    if (typeof prefs.currentRadius === 'number' && sizeMap[prefs.currentRadius]) {
+      MODE_SETTINGS.classic.size = sizeMap[prefs.currentRadius];
+    }
+    if (typeof prefs.currentGrid === 'string') MODE_SETTINGS.classic.grid = prefs.currentGrid;
+    if (typeof prefs.totalTime === 'number') MODE_SETTINGS.classic.time = String(prefs.totalTime);
   }
 
-  // ----- Training params -----
-  if (typeof prefs.currentDist === 'number') {
-    currentDist = prefs.currentDist;
-    const distLabel = currentDist === 8 ? '近' : currentDist === 12 ? '中' : '远';
-    activateBtnByText('distBtns', b => b.textContent.includes(distLabel));
+  // ----- Current mode + apply active mode's settings to globals -----
+  if (typeof prefs.currentTrainingMode === 'string' && TRAINING_MODES[prefs.currentTrainingMode]) {
+    currentTrainingMode = prefs.currentTrainingMode;
   }
-  if (typeof prefs.currentRadius === 'number') {
-    currentRadius = prefs.currentRadius;
-    const sizeLabel = currentRadius === 0.45 ? '大' : currentRadius === 0.35 ? '中' :
-                      currentRadius === 0.25 ? '小' : '极小';
-    activateBtnByText('sizeBtns', b => b.textContent === sizeLabel);
-  }
-  if (typeof prefs.totalTime === 'number') {
-    totalTime = prefs.totalTime;
-    const timeLabel = totalTime === 30 ? '30秒' : totalTime === 60 ? '1分钟' : '2分钟';
-    activateBtnByText('timeBtns', b => b.textContent === timeLabel);
-  }
-  if (typeof prefs.currentGrid === 'string') {
-    currentGrid = prefs.currentGrid;
-    const gridLabel = currentGrid === '3x3' ? '9宫格' : '25宫格';
-    activateBtnByText('gridBtns', b => b.textContent === gridLabel);
-  }
-  applyTrainingModeUI();
+  applyModeSettingsToGlobals();
+  renderModeTabs();
+  renderModeSettings();
 
   // ----- Sensitivity -----
   if (typeof prefs.sensitivityMultiplier === 'number') {
@@ -76,6 +69,8 @@ function loadPreferences() {
     if (cameraFov > 120) cameraFov = 120;
     document.getElementById('fovSlider').value = cameraFov;
     document.getElementById('fovVal').textContent = cameraFov;
+    document.getElementById('fovVVal').textContent =
+      Math.round(horizontalToVerticalFov(cameraFov, 16 / 9) * 10) / 10;
     applyCameraFov();
   }
 

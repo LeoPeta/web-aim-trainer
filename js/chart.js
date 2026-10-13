@@ -226,10 +226,14 @@ function showChartTooltip(e, points, tooltip) {
       const d = new Date(p.record.date);
       const dateStr = (d.getMonth() + 1) + '/' + d.getDate() + ' ' +
         d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+      // Aim-only modes (e.g. tracking) store hits=0; show their aim metric instead
+      const detail = p.record.hits > 0
+        ? `命中 ${p.record.hits} · 命中率 ${p.record.accuracy}% · 反应 ${p.record.avgReaction}ms`
+        : `在靶率 ${p.record.accuracy}%`;
       tooltip.innerHTML =
         `${dateStr}<br>` +
         `综合得分 ${p.record.generalScore}<br>` +
-        `命中 ${p.record.hits} · 命中率 ${p.record.accuracy}% · 反应 ${p.record.avgReaction}ms`;
+        detail;
       tooltip.style.display = 'block';
       tooltip.style.left = (e.clientX + 12) + 'px';
       tooltip.style.top = (e.clientY - 50) + 'px';
