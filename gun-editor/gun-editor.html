@@ -98,10 +98,19 @@
       width: 11px; height: 11px; border-radius: 50%;
       background: #999; cursor: pointer; border: 1px solid #555;
     }
-    .slider-val {
-      font-size: 10px; color: #666; width: 38px;
-      text-align: right; flex-shrink: 0;
+    .slider-num {
+      width: 54px; flex-shrink: 0;
+      background: #141414; border: 1px solid #2a2a2a; border-radius: 3px;
+      color: #999; font-family: 'Courier New', monospace;
+      font-size: 10px; text-align: right; padding: 2px 4px;
+      outline: none; -moz-appearance: textfield;
+      transition: border-color 0.2s, color 0.2s;
     }
+    .slider-num:hover { border-color: #3a3a3a; }
+    .slider-num:focus { border-color: #666; color: #ddd; }
+    /* 隐藏原生上下箭头（键盘 ↑↓ 仍然可以步进） */
+    .slider-num::-webkit-outer-spin-button,
+    .slider-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
     /* Color row */
     .color-row { display: flex; align-items: center; gap: 8px; margin: 5px 0 2px; }
@@ -193,8 +202,10 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 const params = JSON.parse(JSON.stringify(DEFAULT_GUN_PARAMS));
 let mode = 'free';            // 'free' | 'fps'
 let gun, scene, renderer;
-let freeCamera, fpsCamera, controls;
+let worldGroup;               // 世界物体（网格 / 坐标轴 / 背墙），武器遍要能整体隐藏
+let freeCamera, fpsCamera, weaponCamera, controls;
 let activeCamera;
+let axesGroup;
 let recoilAnim = null;
 
 // FPS mouse-look state
@@ -221,8 +232,17 @@ function init() {
   dir.position.set(2, 5, 3);
   scene.add(dir);
 
+  // 世界物体统一放进一个 group，武器遍可以整体隐藏
+  worldGroup = new THREE.Group();
+  worldGroup.name = 'world';
+  scene.add(worldGroup);
+
   // Grid floor
-  scene.add(new THREE.GridHelper(20, 20, 0x333333, 0x222222));
+  worldGroup.add(new THREE.GridHelper(20, 20, 0x333333, 0x222222));
+
+  // Coordinate axes (X 黄 / Y 绿 / Z 蓝) with letter labels
+  axesGroup = createAxesHelper(0.6);
+  worldGroup.add(axesGroup);
 
   // Back wall (FPS reference)
   const wall = new THREE.Mesh(
@@ -230,7 +250,7 @@ function init() {
     new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 1 })
   );
   wall.position.set(0, 5, -20);
-  scene.add(wall);
+  worldGroup.add(wall);
 
   // Free camera
   freeCamera = new THREE.PerspectiveCamera(
@@ -253,6 +273,13 @@ function init() {
   fpsCamera.position.set(0, 5, 0);
   fpsCamera.rotation.order = 'YXZ';
   scene.add(fpsCamera);
+
+  // 武器相机 —— fpsCamera 的子节点，变换完全跟随（局部变换是单位阵），
+  // 只有 FOV 不同：枪用独立 FOV 渲染，世界用世界 FOV。
+  weaponCamera = new THREE.PerspectiveCamera(
+    params.fpsFov, vp.clientWidth / vp.clientHeight, 0.01, 100
+  );
+  fpsCamera.add(weaponCamera);
 
   // Create gun
   gun = createGun(THREE, params);
@@ -282,6 +309,59 @@ function onResize() {
   renderer.setSize(w, h);
   freeCamera.aspect = w / h;  freeCamera.updateProjectionMatrix();
   fpsCamera.aspect  = w / h;  fpsCamera.updateProjectionMatrix();
+  weaponCamera.aspect = w / h; weaponCamera.updateProjectionMatrix();
+}
+
+// ====== Coordinate Axes ======
+const AXIS_DEFS = [
+  { name: 'X', color: 0xffd21e, dir: new THREE.Vector3(1, 0, 0) },
+  { name: 'Y', color: 0x33dd55, dir: new THREE.Vector3(0, 1, 0) },
+  { name: 'Z', color: 0x3399ff, dir: new THREE.Vector3(0, 0, 1) }
+];
+
+// 用 canvas 生成字母纹理做成 Sprite —— 始终正对相机，转视角不会看不见
+function createAxisLabel(text, color) {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.font = 'bold 44px "Courier New", monospace';
+  ctx.fillStyle = '#' + color.toString(16).padStart(6, '0');
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, size / 2, size / 2);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.minFilter = THREE.LinearFilter;
+
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: tex, transparent: true })
+  );
+  sprite.scale.set(0.13, 0.13, 1);
+  return sprite;
+}
+
+function createAxesHelper(len) {
+  const group = new THREE.Group();
+  group.name = 'axesHelper';
+
+  AXIS_DEFS.forEach(def => {
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        def.dir.clone().multiplyScalar(len)
+      ]),
+      new THREE.LineBasicMaterial({ color: def.color })
+    );
+    group.add(line);
+
+    const label = createAxisLabel(def.name, def.color);
+    label.position.copy(def.dir.clone().multiplyScalar(len * 1.16));
+    group.add(label);
+  });
+
+  return group;
 }
 
 // ====== Gun Update ======
@@ -300,11 +380,24 @@ function refreshGun() {
     grip.rotation.set(params.grip.rotation.x, params.grip.rotation.y, params.grip.rotation.z);
     grip.material.color.set(params.grip.color);
   }
+  const mag = gun.getObjectByName('magazine');
+  if (mag) {
+    mag.scale.set(params.magazine.size.x, params.magazine.size.y, params.magazine.size.z);
+    mag.position.set(params.magazine.position.x, params.magazine.position.y, params.magazine.position.z);
+    mag.rotation.set(params.magazine.rotation.x, params.magazine.rotation.y, params.magazine.rotation.z);
+    mag.material.color.set(params.magazine.color);
+  }
   // Apply FPS offset only when in FPS mode and no recoil playing
   if (mode === 'fps' && !recoilAnim) {
     gun.position.set(params.fpsOffset.x, params.fpsOffset.y, params.fpsOffset.z);
     gun.rotation.set(params.fpsRotation.x, params.fpsRotation.y, params.fpsRotation.z);
   }
+}
+
+// 武器独立 FOV：只改武器相机的投影，不影响世界相机
+function applyWeaponFov() {
+  weaponCamera.fov = params.fpsFov;
+  weaponCamera.updateProjectionMatrix();
 }
 
 // ====== Mode Switching ======
@@ -329,6 +422,7 @@ function switchMode(newMode) {
     controls.enabled = true;
     controls.update();
     crosshair.style.display = 'none';
+    if (axesGroup) axesGroup.visible = true;
   } else {
     scene.remove(gun);
     gun.position.set(params.fpsOffset.x, params.fpsOffset.y, params.fpsOffset.z);
@@ -340,6 +434,7 @@ function switchMode(newMode) {
     fpsYaw = 0; fpsPitch = 0;
     fpsCamera.rotation.set(0, 0, 0, 'YXZ');
     crosshair.style.display = 'block';
+    if (axesGroup) axesGroup.visible = false;
   }
 }
 
@@ -349,8 +444,11 @@ function playRecoil() {
   const startPos = gun.position.clone();
   const startRot = gun.rotation.clone();
 
-  const recoilPos = new THREE.Vector3(0, 0.02, 0.04);
-  const recoilRot = new THREE.Euler(-0.08, 0, 0);
+  // 峰值位移：枪身向后上退（+Y 上抬，+Z 后座）
+  const recoilPos = new THREE.Vector3(0, 0.04, 0.07);
+  // 峰值旋转：枪的前方是局部 -Z，绕 X 轴【正】向旋转才是枪口上跳
+  // （之前是 -0.08，方向反了，枪口是往下扎的）
+  const recoilRot = new THREE.Euler(0.12, 0, 0);
 
   recoilAnim = {
     startPos, startRot, recoilPos, recoilRot,
@@ -404,10 +502,13 @@ function resetParams() {
   const defaults = JSON.parse(JSON.stringify(DEFAULT_GUN_PARAMS));
   Object.assign(params.body, defaults.body);
   Object.assign(params.grip, defaults.grip);
+  Object.assign(params.magazine, defaults.magazine);
   Object.assign(params.fpsOffset, defaults.fpsOffset);
   Object.assign(params.fpsRotation, defaults.fpsRotation);
+  params.fpsFov = defaults.fpsFov;
   buildControls();
   refreshGun();
+  applyWeaponFov();
   showToast('已重置');
 }
 
@@ -430,6 +531,12 @@ function buildControls() {
   }));
 
   container.appendChild(createPartSection('握把', params.grip, {
+    sizeRange: [0.01, 0.5, 0.005],
+    posRange:  [-0.5, 0.5, 0.005],
+    rotRange:  [-90, 90, 1]
+  }));
+
+  container.appendChild(createPartSection('弹匣', params.magazine, {
     sizeRange: [0.01, 0.5, 0.005],
     posRange:  [-0.5, 0.5, 0.005],
     rotRange:  [-90, 90, 1]
@@ -489,7 +596,7 @@ function createFPSOffsetSection() {
 
   const h = document.createElement('div');
   h.className = 'part-title';
-  h.textContent = 'FPS 视角偏移';
+  h.textContent = 'FPS 视角';
   section.appendChild(h);
 
   // Offset
@@ -511,6 +618,12 @@ function createFPSOffsetSection() {
     ).row);
   });
 
+  // 武器独立 FOV（度）—— 只影响武器相机
+  section.appendChild(makeSlider(
+    'FOV', params.fpsFov, 30, 120, 1,
+    v => { params.fpsFov = v; applyWeaponFov(); }
+  ).row);
+
   return section;
 }
 
@@ -527,20 +640,44 @@ function makeSlider(label, value, min, max, step, onChange) {
   input.min = min; input.max = max; input.step = step;
   input.value = value;
 
-  const valSpan = document.createElement('span');
-  valSpan.className = 'slider-val';
-  valSpan.textContent = fmtVal(value, step);
+  // 数值框：可直接键入精确值
+  const num = document.createElement('input');
+  num.type = 'number';
+  num.className = 'slider-num';
+  num.min = min; num.max = max; num.step = step;
+
+  // 记录「当前显示文本」：非法输入时回滚到它，而不是回滚到滑块的吸附值
+  let lastText = fmtVal(value, step);
+  function setNum(text) { num.value = text; lastText = text; }
+  setNum(lastText);
+
+  // 键入的值 -> 钳制到 [min,max] -> 回写 state 与滑块
+  function commit(raw) {
+    const v = parseFloat(raw);
+    if (!isFinite(v)) { setNum(lastText); return; }   // 非法/空输入：回滚
+    const clamped = Math.min(max, Math.max(min, v));
+    input.value = clamped;                  // 滑块跟随（浏览器会把滑块吸附到刻度）
+    setNum(clamped === v ? raw.trim() : fmtVal(clamped, step));
+    onChange(clamped);
+  }
 
   input.addEventListener('input', () => {
     const v = parseFloat(input.value);
-    valSpan.textContent = fmtVal(v, step);
+    setNum(fmtVal(v, step));
     onChange(v);
+  });
+
+  // change 只在值真的变了时才触发 —— 点进点出不会造成精度损失
+  num.addEventListener('change', () => commit(num.value));
+  num.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { commit(num.value); num.blur(); }
+    if (e.key === 'Escape') { setNum(lastText); num.blur(); }
   });
 
   row.appendChild(lbl);
   row.appendChild(input);
-  row.appendChild(valSpan);
-  return { row, input, valSpan };
+  row.appendChild(num);
+  return { row, input, num };
 }
 
 function makeColorPicker(label, value, onChange) {
@@ -572,7 +709,27 @@ function animate() {
   requestAnimationFrame(animate);
   if (controls.enabled) controls.update();
   updateRecoil();
-  renderer.render(scene, activeCamera);
+  renderFrame();
+}
+
+// FPS 模式两遍渲染：世界用世界 FOV，武器用独立 FOV
+function renderFrame() {
+  if (mode !== 'fps') {
+    renderer.render(scene, activeCamera);       // 自由视角：单遍，枪就是世界物体
+    return;
+  }
+  // 第一遍：世界（枪先藏起来，避免它被世界 FOV 画一次）
+  gun.visible = false;
+  renderer.render(scene, activeCamera);         // activeCamera === fpsCamera
+
+  // 第二遍：武器（世界藏起来；只清深度不清颜色，让枪叠在世界之上）
+  gun.visible = true;
+  worldGroup.visible = false;
+  renderer.autoClear = false;
+  renderer.clearDepth();
+  renderer.render(scene, weaponCamera);
+  worldGroup.visible = true;
+  renderer.autoClear = true;
 }
 
 // ====== Event Bindings ======

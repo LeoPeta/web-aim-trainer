@@ -5,19 +5,26 @@
 
 var DEFAULT_GUN_PARAMS = {
   body: {
-    size:     { x: 0.25,  y: 0.07,  z: 0.05  },
-    position: { x: 0,     y: 0,     z: 0     },
-    rotation: { x: 0,     y: 0,     z: 0     },   // radians
-    color: '#888888'
+    size:     { x: 0.13,  y: 0.1,    z: 0.45  },
+    position: { x: 0,     y: -0.075, z: -0.1  },
+    rotation: { x: 0,     y: 0,      z: 0     },   // radians
+    color: '#828282'
   },
   grip: {
-    size:     { x: 0.05,  y: 0.13,  z: 0.045 },
-    position: { x: -0.04, y: -0.09, z: 0.003 },
-    rotation: { x: 0,     y: 0,     z: 0.2   },   // radians (~11.5°)
-    color: '#3a3a3a'
+    size:     { x: 0.12,  y: 0.25,   z: 0.16  },
+    position: { x: 0,     y: -0.2,   z: 0     },
+    rotation: { x: -0.08726646259971647, y: 0, z: 0 },   // radians (~-5°)
+    color: '#7a7a7a'
   },
-  fpsOffset:   { x: 0.25,  y: -0.22, z: -0.45 },
-  fpsRotation: { x: 0,     y: 0,     z: 0     }    // radians
+  magazine: {
+    size:     { x: 0.14,  y: 0.15,   z: 0.45  },
+    position: { x: 0,     y: 0,      z: -0.1  },
+    rotation: { x: 0,     y: 0,      z: 0     },   // radians
+    color: '#707070'
+  },
+  fpsOffset:   { x: 0.6,   y: -0.4,  z: -1    },
+  fpsRotation: { x: 0,     y: 0,     z: 0     },   // radians
+  fpsFov:      75                                  // 武器独立 FOV（度）—— 只作用于 FPS 模式下的枪
 };
 
 function createGun(THREE, params) {
@@ -48,6 +55,18 @@ function createGun(THREE, params) {
   grip.rotation.set(params.grip.rotation.x, params.grip.rotation.y, params.grip.rotation.z);
   grip.name = 'grip';
   gun.add(grip);
+
+  // Magazine
+  var magGeo = new THREE.BoxGeometry(1, 1, 1);
+  var magMat = new THREE.MeshStandardMaterial({
+    color: params.magazine.color, roughness: 0.7, metalness: 0.2
+  });
+  var mag = new THREE.Mesh(magGeo, magMat);
+  mag.scale.set(params.magazine.size.x, params.magazine.size.y, params.magazine.size.z);
+  mag.position.set(params.magazine.position.x, params.magazine.position.y, params.magazine.position.z);
+  mag.rotation.set(params.magazine.rotation.x, params.magazine.rotation.y, params.magazine.rotation.z);
+  mag.name = 'magazine';
+  gun.add(mag);
 
   return gun;
 }
