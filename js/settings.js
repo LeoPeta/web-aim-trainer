@@ -35,6 +35,24 @@ function ensureModeSettings(mode) {
   }
 }
 
+// 把存档里失效的 option id 收敛回该组的默认项。选项被删掉或改名后（例如跟枪的
+// 「8字匀速」下线），localStorage 里会留着找不到的 id；不清洗的话
+// applyModeSettingsToGlobals() 的 find() 会落空、apply 不执行，全局变量停在上一个
+// 值，而设置面板因为没有匹配项会显示第一项 —— 界面和行为就此对不上。
+// 只在 loadPreferences() 里调一次，不进每帧路径。
+function sanitizeModeSettings() {
+  for (const id in TRAINING_MODES) {
+    ensureModeSettings(id);
+    const slot = MODE_SETTINGS[id];
+    for (const group of (TRAINING_MODES[id].settingGroups || [])) {
+      if (group.options.some(o => o.id === slot[group.key])) continue;
+      const def = group.options.find(o => o.default) || group.options[0];
+      if (def) slot[group.key] = def.id;
+      else delete slot[group.key];
+    }
+  }
+}
+
 function applyModeSettingsToGlobals() {
   ensureModeSettings(currentTrainingMode);
   const settings = MODE_SETTINGS[currentTrainingMode] || {};

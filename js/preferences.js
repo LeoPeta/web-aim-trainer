@@ -51,6 +51,9 @@ function loadPreferences() {
   if (typeof prefs.currentTrainingMode === 'string' && TRAINING_MODES[prefs.currentTrainingMode]) {
     currentTrainingMode = prefs.currentTrainingMode;
   }
+  // 存档里可能有已下线的 option id（如跟枪的 'lissajous'），先收敛再应用，
+  // 否则 apply 会被 find() 静默跳过、全局变量和面板显示对不上。
+  sanitizeModeSettings();
   applyModeSettingsToGlobals();
   renderModeTabs();
   renderModeSettings();

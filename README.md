@@ -8,7 +8,7 @@
 ## 🎯 功能特性
 
 - **3D 训练场景** — Three.js 渲染，支持 144Hz/240Hz 高刷新率
-- **多种训练模式** — 3 球网格射击 + 六球定位射击（超远、极小、随机大范围）+ 跟枪（8字匀速 / 水平随机折返 / 随机游走）
+- **多种训练模式** — 3 球网格射击 + 六球定位射击（超远、极小、随机大范围）+ 跟枪（水平随机折返 / 随机游走）
 - **多种训练参数** — 距离 / 球体大小 / 时长 / 宫格布局可自由组合
 - **统一设置面板** — 通用 / 准心 / 各玩法三个 tab：全局设置（FOV、灵敏度、枪支、色彩模式）与玩法参数集中管理
 - **昼夜色彩模式** — 通用 tab 可切「夜晚 / 白天」。白天把天空 / 地板 / 墙面换成浅灰、文字转深色、网格转深色；场景配色走 `SCENE_THEMES`、UI 配色走 CSS 变量，一次切换两边同时生效
@@ -42,7 +42,7 @@ web-aim-trainer/
 │   │   ├── registry.js    ← 模式注册表 + getModeId/getModeLabel/resetTarget 分发
 │   │   ├── classic.js     ← 3 球网格模式
 │   │   ├── six-ball.js    ← 6 球定位随机模式
-│   │   └── tracking.js    ← 跟枪模式（8字匀速 / 水平随机折返 / 随机游走）
+│   │   └── tracking.js    ← 跟枪模式（水平随机折返 / 随机游走）
 │   ├── scoring/           ← 计分系统
 │   │   ├── general-score.js ← 综合得分公式
 │   │   └── click-scoring.js ← 点击命中/未中/反应时处理
@@ -83,12 +83,12 @@ web-aim-trainer/
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| **`settings.js`** | ~244 | **设置面板**：tab 条 = 通用 / 准心 / 各玩法（`SETTINGS_GLOBAL_TABS` + 注册的模式），`currentSettingsTab` 控制三个 pane 互斥显示；`MODE_SETTINGS` per-mode 槽 + `renderModeSettings()` 按 `mode.settingGroups` 配置驱动渲染 + `setModeSetting()` / `setTrainingMode()`；主菜单模式下拉框 `renderModeSelect()`；全局灵敏度（0.1-2.00，默认 0.5，数值对应 Valorant sens）/ hFOV（85°~120°，默认 103°）/ 色彩模式（`setColorMode()` / `applyColorMode()`） |
+| **`settings.js`** | ~262 | **设置面板**：tab 条 = 通用 / 准心 / 各玩法（`SETTINGS_GLOBAL_TABS` + 注册的模式），`currentSettingsTab` 控制三个 pane 互斥显示；`MODE_SETTINGS` per-mode 槽 + `renderModeSettings()` 按 `mode.settingGroups` 配置驱动渲染 + `setModeSetting()` / `setTrainingMode()`；`sanitizeModeSettings()` 把存档里失效的 option id 收敛回该组默认值；主菜单模式下拉框 `renderModeSelect()`；全局灵敏度（0.1-2.00，默认 0.5，数值对应 Valorant sens）/ hFOV（85°~120°，默认 103°）/ 色彩模式（`setColorMode()` / `applyColorMode()`） |
 | **`history.js`** | ~34 | localStorage 读写、保存记录、按模式筛选记录；模式 ID/Label 已迁移到 `js/modes/` |
 | **`modes/registry.js`** | ~63 | 模式注册表，提供 `getModeId()` / `getModeLabel()` / `resetTarget()` / 有效参数分发 |
 | **`modes/classic.js`** | ~130 | 3 球网格模式：网格生成、slot 排重、经典 modeId/label |
 | **`modes/six-ball.js`** | ~91 | 六球定位模式：超远极小目标、随机非网格生成、六球 modeId/label |
-| **`modes/tracking.js`** | ~303 | 跟枪模式：准心压靶即计分（不开火）；三种轨迹——8 字匀速（弧长参数化保证恒速）、水平随机折返（匀速 + 随机折返点，边界恒为 ±ax）、随机游走（随机加速度 + 限速 + 边界反弹） |
+| **`modes/tracking.js`** | ~289 | 跟枪模式：准心压靶即计分（不开火）；两种轨迹——水平随机折返（匀速 + 随机折返点，行程在 `TRACK_LEG_PRESETS` 的区间内抽取后夹到墙，边界恒为 ±ax）、随机游走（随机加速度 + 限速 + 边界反弹）；折返行程档位同时编码进 modeId |
 | **`scoring/general-score.js`** | ~19 | 综合得分公式 `calcGeneralScore()` |
 | **`scoring/click-scoring.js`** | ~27 | 点击类模式射击处理：`triggerRecoil()`、raycast、命中/未中、反应时、HUD 更新 |
 | **`chart.js`** | ~275 | 双折线图绘制（综合得分趋势 + 命中率趋势，独立 Y 轴）+ tooltip（鼠标悬浮显示日期与数据）；`CHART_PALETTE` 按色彩模式提供折线 / 描边配色 |
@@ -101,7 +101,7 @@ web-aim-trainer/
 | **`sound.js`** | ~31 | Web Audio API 合成击中音效（600→250Hz 正弦波，80ms 衰减），`initAudio()` 预热 AudioContext |
 | **`training.js`** | ~152 | 状态机：`startTraining`（调用当前模式准备目标 + 3 秒倒计时）/ `pauseTraining` / `resumeTraining` / `endTraining` / `backToMenu`，负责状态切换时清空输入和更新 renderer 可见性 |
 | **`input.js`** | ~54 | **输入层**：`mousemove` 累加 raw pixel delta 到 `pendingMouseX/Y`，单事件 `>200px` 尖峰丢弃（CS 式）、不碰灵敏度/相机、pointer lock 丢失时清空 pending、`mousedown` 只做状态 guard 并调用 `handlePrimaryShot()` |
-| **`preferences.js`** | ~128 | `savePreferences()` / `loadPreferences()`：`modeSettings`（每模式独立值）+ `currentTrainingMode` + 灵敏度/hFOV/枪支开关/色彩模式/准心设置持久化到 localStorage（key: `aimTrainerPrefs`），旧版顶层值自动迁移进 classic 槽，下次打开自动恢复 |
+| **`preferences.js`** | ~131 | `savePreferences()` / `loadPreferences()`：`modeSettings`（每模式独立值）+ `currentTrainingMode` + 灵敏度/hFOV/枪支开关/色彩模式/准心设置持久化到 localStorage（key: `aimTrainerPrefs`），旧版顶层值自动迁移进 classic 槽，恢复时先 `sanitizeModeSettings()` 清掉已下线的选项值，下次打开自动恢复 |
 
 ---
 
@@ -185,9 +185,11 @@ drawChart() + drawAccChart() 绘制得分与命中率历史趋势
 |------|----------|----------|-----------|----------|----------|
 | 3球网格射击 | 3 | 跟随「目标大小」设置 | 近/中/远 | 9宫格 / 25宫格 | 距离、大小、宫格、时间均可调 |
 | 六球定位 | 6 | 极小（0.15） | 超远 20m，贴近后墙 | 大范围连续随机，非网格 | 固定 6球/超远/极小/随机；时间可调 |
-| 跟枪 | 1 | 跟随「靶子大小」设置 | 近/中/远 | 8字匀速 / 水平随机折返 / 随机游走 | 轨迹、速度、靶子大小、距离、时间均可调 |
+| 跟枪 | 1 | 跟随「靶子大小」设置 | 近/中/远 | 水平随机折返 / 随机游走 | 轨迹、折返行程、速度、靶子大小、距离、时间均可调 |
 
-跟枪模式不开火：准心射线压在靶上即累计「在靶」时间，综合得分 = 在靶毫秒数 × 在靶率。三种轨迹都按当前 FOV 折算振幅，换距离 / 换 FOV 时视觉运动幅度保持一致。
+跟枪模式不开火：准心射线压在靶上即累计「在靶」时间，综合得分 = 在靶毫秒数 × 在靶率。两种轨迹都按当前 FOV 折算振幅，换距离 / 换 FOV 时视觉运动幅度保持一致。
+
+「水平随机折返」的每段行程在 `[下限, 上限] × 半宽` 里随机抽取，再夹到墙 —— 上限封住「长时间往一个方向移动」，下限封住「短期内多次折返」。区间按**半宽比例**给，所以换距离 / 换 FOV 时折返节奏完全不变（中速下三档恒为 0.38–1.25 / 0.75–2.00 / 1.25–2.50 秒）。
 
 各模式设置互相独立：六球定位不会覆盖 3 球网格射击的距离、大小、宫格设置，跟枪也不会覆盖另外两个；切回去后各自保留之前的设置。
 
@@ -200,21 +202,32 @@ drawChart() + drawAccChart() 绘制得分与命中率历史趋势
 ```
 3球网格射击格式：距离-大小-时长-宫格
 六球定位格式：6B-XF-T-时长-RND
-跟枪格式：TRK-轨迹速度-距离大小-时长
+跟枪格式：TRK-轨迹速度行程-距离大小-时长
 
 距离  N=近(8m)  M=中(12m)  F=远(16m)  XF=超远(20m)
 大小  B=大(0.45)  M=中(0.35)  S=小(0.25)  T=极小(0.15)
 时长  30 / 60 / 120
 宫格  9 / 25
 布局  RND=随机非网格
-轨迹  H=水平随机折返  8=8字匀速  R=随机游走
+轨迹  H=水平随机折返  R=随机游走
 速度  S=慢  M=中  F=快
+行程  T=紧凑(0.15~0.50 半宽)  E=均衡(0.30~0.80)  W=舒展(0.50~1.00)
 
 示例：N-B-60-9        = 近 + 大 + 1分钟 + 9宫格
       F-T-120-25     = 远 + 极小 + 2分钟 + 25宫格
       6B-XF-T-60-RND = 六球定位 + 超远20m + 极小 + 1分钟 + 随机
-      TRK-8M-MM-60   = 跟枪 + 8字匀速 + 中速 + 中距离(12m) + 中靶(0.35) + 1分钟
+      TRK-HME-MM-60  = 跟枪 + 水平随机折返 + 中速 + 均衡行程 + 中距离(12m) + 中靶(0.35) + 1分钟
 ```
+
+> **行程码是后加的**（`ps[2]`）。早于它的记录没有这一位，解码时整段省略 —— 例如
+> `TRK-HM-MM-60` 仍显示成「跟枪+水平随机折返+中速+中+中+1分钟」，不会被扣上一顶
+> 不属于它的档位帽子。代价是同一个轨迹/速度/距离组合下，老记录与新记录会分到
+> 不同的历史桶里，趋势曲线在切换点断开。
+
+> **历史记录里的 8 字轨迹**：`8=8字匀速` 已随该轨迹一并下线（见 `modes/tracking.js`
+> 的 `getTrackingModeLabel()`），所以旧存档里形如 `TRK-8M-MM-60` 的记录会落到解码
+> 回退值、显示成「水平随机折返」。这是一次刻意的取舍——旧的 8 字记录无法与新轨迹
+> 区分。若要改成更诚实的「未知轨迹」，只需换掉该函数里 pathLabel 的回退字符串。
 
 ---
 
@@ -510,7 +523,7 @@ canvas 里的颜色同样读不到 CSS 变量，所以 `js/chart.js` 同步维�
 - **多模式架构**：`js/modes/registry.js` 负责模式注册与分发，具体模式逻辑放在 `js/modes/*.js`，避免在 `training.js` / `targets.js` 堆叠模式 if/else
 - **统一设置面板**：tab 条 = `SETTINGS_GLOBAL_TABS`（通用 / 准心）+ 所有注册的模式。三个 pane（`#generalSettings` / `#crosshairSettings` / `#modeSettingsContainer`）由 `currentSettingsTab` 互斥显示，通用与准心 tab 下的控件是静态 HTML，模式 tab 下由 `settingGroups` 配置驱动渲染
 - **模式选择双入口**：主菜单下拉框（`#modeSelect`）和设置面板的模式 tab 共享同一个真值 `currentTrainingMode`，且只经 `setTrainingMode()` 写入 —— 两个入口不可能不同步
-- **Per-mode 设置**：每个模式在 `settingGroups` 里声明自己的设置组，`settings.js` 通用渲染；`MODE_SETTINGS` 每模式独立存值，切 tab 互不干扰，新模式自动建槽（`ensureModeSettings`）
+- **Per-mode 设置**：每个模式在 `settingGroups` 里声明自己的设置组，`settings.js` 通用渲染；`MODE_SETTINGS` 每模式独立存值，切 tab 互不干扰，新模式自动建槽（`ensureModeSettings`）；`sanitizeModeSettings()` 是它的伴生逻辑，在 `loadPreferences()` 里把存档中已不存在的 option id 收敛回该组默认项 —— 否则 `applyModeSettingsToGlobals()` 的 `find()` 会静默落空、`apply` 不执行，全局变量停在旧值，而面板因为没有匹配项会显示第一项，界面与行为就此对不上
 - **计分拆分**：综合得分公式放在 `js/scoring/general-score.js`，点击命中处理放在 `js/scoring/click-scoring.js`
 - **渲染状态门控**：menu 隐藏 Three.js canvas 且不 render；countdown/playing 连续 render；paused/over 保留最后一帧但停止连续 WebGL render；RAF 主循环仍继续运行
 - **武器两遍渲染**：`renderSceneOnce()` 先画场景（主相机），再清深度画枪（`weaponCamera`，固定 75° FOV，只看 `WEAPON_LAYER`）；枪关闭时 `renderWeaponFrame()` 直接返回，退化成单遍渲染

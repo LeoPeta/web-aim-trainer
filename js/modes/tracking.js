@@ -11,31 +11,42 @@ const TRACK_AMP_RATIO = 0.6;
 const TRACK_MAX_Y_AMP = 3.8;
 // 随机游走的加速度标度
 const TRACK_RANDOM_ACCEL = 8;
-// 水平随机折返：每段最短行程（占半宽 ax 的比例）。
-// 调大 → 段更长、折返更疏、更接近旧三角波；调小 → 同侧小幅折返更多、更碎。
-const TRACK_H_MIN_LEG = 0.12;
-// 8 字完整闭合一圈 = 2 个水平周期（x 走 2 圈、y 走 3 圈才回到起点）
-const TRACK_LISSAJOUS_PERIODS = 2;
-// 8 字弧长查找表的采样数
-const TRACK_LUT_SAMPLES = 512;
+// 折返行程预设：id → 每段行程区间（占半宽 ax 的比例）+ modeId 里的编码字符。
+// 下限封住「短期内多次折返」，上限封住「长时间往一个方向移动」。
+// 改档位只动这张表 —— 设置面板的选项标签和 modeId 编码都从它派生。
+const TRACK_LEG_PRESETS = {
+  tight: { label: '紧凑', min: 0.15, max: 0.50, code: 'T' },
+  even:  { label: '均衡', min: 0.30, max: 0.80, code: 'E' },
+  wide:  { label: '舒展', min: 0.50, max: 1.00, code: 'W' },
+};
+const TRACK_LEG_DEFAULT = 'even';
 // 准心中心点（复用点击模式的射线原点语义，但本文件自持，避免跨文件加载顺序依赖）
 const TRACK_CENTER_POINT = { x: 0, y: 0 };
 
-let trackPath = 'lissajous';
+let trackPath = 'horizontal';
 let trackSpeed = 'mid';
+// 折返行程：档位 id + 展开后的区间（world 单位由 pickTrackHTurnX 乘 ax 得到）
+let trackLegRange = TRACK_LEG_DEFAULT;
+let trackLegMin = TRACK_LEG_PRESETS[TRACK_LEG_DEFAULT].min;
+let trackLegMax = TRACK_LEG_PRESETS[TRACK_LEG_DEFAULT].max;
+
+function applyTrackLegRange(id) {
+  const p = TRACK_LEG_PRESETS[id];
+  if (!p) return;
+  trackLegRange = id;
+  trackLegMin = p.min;
+  trackLegMax = p.max;
+}
 
 // ---- Runtime state (per run) ----
 let trackOnTime = 0;     // 在靶累计秒数
 let trackElapsed = 0;    // playing 累计秒数
-let trackPhase = 0;      // 运动相位（秒）
 let trackRandom = { x: 0, y: 0, vx: 0, vy: 0 };
 let trackH = { x: 0, dir: 1, turnX: 0 };   // 水平随机折返状态
-let trackLissajousLut = null;   // 8 字弧长表（按 ax/ay 缓存）
 
 function resetTrackingState() {
   trackOnTime = 0;
   trackElapsed = 0;
-  trackPhase = 0;
   trackRandom = { x: 0, y: 0, vx: 0, vy: 0 };
   trackH.x = 0;
   trackH.dir = 1;
@@ -58,64 +69,21 @@ function trackFrequency() {
   return TRACK_SPEED_HZ[trackSpeed] || TRACK_SPEED_HZ.mid;
 }
 
-// ---- 8字匀速：弧长参数化 ----
-// 直接让 θ ∝ t（x=ax·sinθ, y=ay·sin1.5θ）会让靶子在“腰”上快、两端慢。
-// 这里建一张累积弧长表，再把时间线性映射到弧长，使靶子沿曲线恒速移动。
-function buildLissajousLut(ax, ay) {
-  const n = TRACK_LUT_SAMPLES;
-  const cum = new Float32Array(n + 1);
-  let px = 0, py = 0, acc = 0;   // θ=0 时 x=ax·sin0=0、y=ay·sin0=0
-  for (let i = 1; i <= n; i++) {
-    const ph = 4 * Math.PI * (i / n);   // θ: 0 → 4π（完整闭合一圈）
-    const x = ax * Math.sin(ph);
-    const y = ay * Math.sin(1.5 * ph);
-    acc += Math.hypot(x - px, y - py);
-    cum[i] = acc;
-    px = x;
-    py = y;
-  }
-  return { ax, ay, cum, total: acc, n };
-}
-
-function getLissajousLut(ax, ay) {
-  const lut = trackLissajousLut;
-  if (!lut || lut.ax !== ax || lut.ay !== ay) {
-    trackLissajousLut = buildLissajousLut(ax, ay);
-  }
-  return trackLissajousLut;
-}
-
-// 给定已走过的弧长，反查曲线参数 u ∈ [0,1)
-function lissajousUAtArc(lut, arc) {
-  const d = ((arc % lut.total) + lut.total) % lut.total;
-  let lo = 0, hi = lut.n;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (lut.cum[mid] < d) lo = mid + 1; else hi = mid;
-  }
-  const i = Math.max(1, Math.min(lut.n, lo));
-  const s0 = lut.cum[i - 1], s1 = lut.cum[i];
-  const seg = s1 - s0;
-  const frac = seg > 1e-9 ? (d - s0) / seg : 0;
-  return (i - 1 + frac) / lut.n;
-}
-
-function lissajousOffsetAt(t, ax, ay) {
-  const lut = getLissajousLut(ax, ay);
-  const period = TRACK_LISSAJOUS_PERIODS / trackFrequency();  // 一圈的时长
-  const u = lissajousUAtArc(lut, (t / period) * lut.total);   // 恒速：时间 ∝ 弧长
-  const ph = 4 * Math.PI * u;
-  return { x: ax * Math.sin(ph), y: ay * Math.sin(1.5 * ph) };
-}
-
 // ---- 水平随机折返：匀速 + 随机折返点 ----
 // 折返点必须落在 [x + minLeg, ax] 内，所以左右边界恒为 ±ax（与固定三角波一致），
 // 不会越界；每段行程随机，轨迹因此不可预测。
+//
+// 行程在 [trackLegMin, trackLegMax]·ax 里抽，再夹到墙。这一步不会产生短于
+// trackLegMin 的碎段：设折返点 i 处「本方向到墙距离」为 r_i，由
+// x_i = x_{i-1} − dir_i·L_{i-1} 可推出 r_i = 2·ax + L_{i-1} − r_{i-1}，
+// 代入 L_{i-1} ≥ trackLegMin·ax 和 r_{i-1} ≤ 2·ax 得 r_i ≥ trackLegMin·ax ——
+// 每个折返点都天然至少还剩一个最短行程的空间。前提是 trackLegMin ≤ 1
+// （预设表里最大 0.50）且运行中不改档位（改档会重置到 x=0 重新起跑）。
 function pickTrackHTurnX(ax) {
   const dir = trackH.dir;
   const reach = Math.abs(ax * dir - trackH.x);   // 本方向还能走的距离
-  const minLeg = Math.min(TRACK_H_MIN_LEG * ax, reach);
-  trackH.turnX = trackH.x + dir * (minLeg + Math.random() * (reach - minLeg));
+  const want = (trackLegMin + Math.random() * (trackLegMax - trackLegMin)) * ax;
+  trackH.turnX = trackH.x + dir * Math.min(want, reach);
 }
 
 // 匀速推进 + 到点折返。溢出量带入下一段，保证速度精确、掉帧不丢时间。
@@ -139,16 +107,12 @@ function stepTrackHorizontal(dt) {
 }
 
 // 轨迹偏移量（相对视野中心，单位：世界坐标）。
-// 水平随机折返 / 随机游走都读各自的状态（在 updateTrackingFrame 里推进）。
-function trackOffsetAt(t) {
-  const { ax, ay } = trackAmplitude();
+// 两种轨迹都读各自的状态（在 updateTrackingFrame 里推进），不再依赖时间参数。
+function trackOffsetAt() {
   if (trackPath === 'horizontal') {
     return { x: trackH.x, y: 0 };
   }
-  if (trackPath === 'random') {
-    return { x: trackRandom.x, y: trackRandom.y };
-  }
-  return lissajousOffsetAt(t, ax, ay);
+  return { x: trackRandom.x, y: trackRandom.y };
 }
 
 // 随机游走：随机加速度 + 限速 + 边界反弹
@@ -177,18 +141,17 @@ function prepareTrackingTargets() {
 }
 
 function resetTrackingTarget(target) {
-  const off = trackOffsetAt(0);
+  const off = trackOffsetAt();
   target.position.set(off.x, 5 + off.y, -currentDist);
   target.scale.set(currentRadius, currentRadius, currentRadius);
 }
 
 function updateTrackingFrame(dt) {
   trackElapsed += dt;
-  trackPhase += dt;
   if (trackPath === 'horizontal') stepTrackHorizontal(dt);
   if (trackPath === 'random') stepTrackRandom(dt);
 
-  const off = trackOffsetAt(trackPhase);
+  const off = trackOffsetAt();
   const target = activeTargets[0];
   if (target) target.position.set(off.x, 5 + off.y, -currentDist);
 
@@ -202,24 +165,33 @@ function updateTrackingFrame(dt) {
 }
 
 function getTrackingModeId() {
-  const pathCode = { horizontal: 'H', lissajous: '8', random: 'R' }[trackPath] || '8';
+  const pathCode = { horizontal: 'H', random: 'R' }[trackPath] || 'H';
   const speedCode = { slow: 'S', mid: 'M', fast: 'F' }[trackSpeed] || 'M';
+  const legCode = TRACK_LEG_PRESETS[trackLegRange].code;
   const distCode = { 8: 'N', 12: 'M', 16: 'F' }[currentDist] || 'M';
   const sizeCode = { 0.45: 'B', 0.35: 'M', 0.25: 'S', 0.15: 'T' }[currentRadius] || 'M';
-  return `TRK-${pathCode}${speedCode}-${distCode}${sizeCode}-${totalTime}`;
+  return `TRK-${pathCode}${speedCode}${legCode}-${distCode}${sizeCode}-${totalTime}`;
 }
 
+// 解码器：把历史记录的 ID 还原成人话。'8'（8字匀速）已随该轨迹一并下线，
+// 所以旧的 TRK-8* 记录会落到回退值、显示成「水平随机折返」——这是刻意取舍，
+// 想改成「未知轨迹」只需换掉这里的回退字符串。
+//
+// 折返行程码是后来加的（ps[2]），早于它的记录没有这一位 → undefined →
+// 整段省略，旧记录因此仍按原样显示，不会被扣上一顶不属于它的档位帽子。
 function getTrackingModeLabel(modeId) {
   const parts = modeId.split('-');
   const ps = parts[1] || '';
   const ds = parts[2] || '';
-  const pathLabel = { H: '水平随机折返', '8': '8字匀速', R: '随机游走' }[ps[0]] || '8字匀速';
+  const pathLabel = { H: '水平随机折返', R: '随机游走' }[ps[0]] || '水平随机折返';
   const speedLabel = { S: '慢速', M: '中速', F: '快速' }[ps[1]] || '中速';
+  const legLabel = { T: '紧凑', E: '均衡', W: '舒展' }[ps[2]];
   const distLabel = { N: '近', M: '中', F: '远' }[ds[0]] || '中';
   const sizeLabel = { B: '大', M: '中', S: '小', T: '极小' }[ds[1]] || '中';
   const dur = parseInt(parts[3]) || 0;
   const durLabel = dur >= 60 ? (dur / 60) + '分钟' : dur + '秒';
-  return `跟枪+${pathLabel}+${speedLabel}+${distLabel}+${sizeLabel}+${durLabel}`;
+  return `跟枪+${pathLabel}+${speedLabel}` + (legLabel ? `+${legLabel}` : '')
+    + `+${distLabel}+${sizeLabel}+${durLabel}`;
 }
 
 registerTrainingMode({
@@ -233,11 +205,25 @@ registerTrainingMode({
       key: 'path',
       label: '运动轨迹',
       options: [
-        { id: 'horizontal', label: '水平随机折返', value: 'horizontal' },
-        { id: 'lissajous', label: '8字匀速', value: 'lissajous', default: true },
+        { id: 'horizontal', label: '水平随机折返', value: 'horizontal', default: true },
         { id: 'random', label: '随机游走', value: 'random' },
       ],
       apply: v => { trackPath = v; },
+    },
+    {
+      // 只作用于「水平随机折返」；随机游走不看这两个值。
+      key: 'legRange',
+      label: '折返行程（水平随机折返）',
+      options: Object.keys(TRACK_LEG_PRESETS).map(id => {
+        const p = TRACK_LEG_PRESETS[id];
+        return {
+          id,
+          label: `${p.label}（${p.min.toFixed(2)}~${p.max.toFixed(2)} 半宽）`,
+          value: id,
+          default: id === TRACK_LEG_DEFAULT,
+        };
+      }),
+      apply: v => { applyTrackLegRange(v); },
     },
     {
       key: 'speed',
