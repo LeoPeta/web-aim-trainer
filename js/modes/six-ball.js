@@ -68,8 +68,28 @@ registerTrainingMode({
   id: 'sixBall',
   label: '六球定位',
   targetCount: 6,
-  hint: '固定: 6球 / 超远20m / 极小 / 随机大范围',
+  // 前三组 locked：和 3 球同样的四行排版，但只有「训练时间」能改。
+  // 这几个值是固定的，由本文件的生成逻辑硬编码（SIX_BALL_SPAWN 的 z=-19.85、
+  // scale 0.15、非网格随机），所以没有 apply —— 不参与全局变量同步。
   settingGroups: [
+    {
+      key: 'distance',
+      label: '目标距离',
+      locked: true,
+      options: [{ id: 'far20', label: '超远 (20m)', value: 20 }],
+    },
+    {
+      key: 'size',
+      label: '目标大小',
+      locked: true,
+      options: [{ id: 'tiny', label: '极小', value: 0.15 }],
+    },
+    {
+      key: 'layout',
+      label: '目标布局',
+      locked: true,
+      options: [{ id: 'random', label: '随机非网格', value: 'random' }],
+    },
     {
       key: 'time',
       label: '训练时间',

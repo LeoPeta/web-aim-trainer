@@ -6,7 +6,7 @@
   <style>
     /* ===== 色彩模式 token =====
        :root 是夜晚模式（默认，与改动前的配色完全一致）；body.theme-day 覆盖同名
-       变量得到白天模式。场景（天空 / 地板 / 墙 / 网格）读不到 CSS 变量，那部分
+       变量得到白天模式。场景（天空 / 地板 / 墙）读不到 CSS 变量，那部分
        由 js/scene.js 的 applySceneTheme() 负责，两边由 setColorMode() 一起切。 */
     :root {
       --c-page: #000;                    /* 页面底色 */
@@ -107,6 +107,47 @@
     .setting-group.disabled { opacity: 0.35; pointer-events: none; }
     .setting-label { font-size: 13px; color: var(--c-text-dim); letter-spacing: 1px; }
     .setting-hint { font-size: 11px; color: var(--c-text-hint); margin-top: 4px; letter-spacing: 0.5px; }
+    /* 设置名右侧的小问号：悬停时在下方弹出说明气泡。纯 CSS，内容取自 data-tip。
+       气泡锚在 left:0 向右展开（不是居中）—— 面板窄，居中会被
+       .mode-settings-scroll 的横向滚动裁掉。box-sizing 得显式写，全局没有通配。 */
+    .help-tip {
+      box-sizing: border-box;
+      display: inline-block;
+      width: 14px; height: 14px;
+      line-height: 12px;
+      margin-left: 5px;
+      border: 1px solid var(--c-border-soft);
+      border-radius: 50%;
+      font-size: 9px;
+      text-align: center;
+      letter-spacing: 0;
+      color: var(--c-text-dim);
+      vertical-align: -2px;
+      position: relative;
+      cursor: default;
+    }
+    .help-tip::after {
+      content: attr(data-tip);
+      position: absolute;
+      left: 0; top: 150%;
+      width: max-content; max-width: 220px;
+      padding: 6px 9px;
+      background: var(--c-surface);
+      color: var(--c-text);
+      border: 1px solid var(--c-border-soft);
+      border-radius: 4px;
+      font-size: 11px;
+      line-height: 1.5;
+      letter-spacing: 0.5px;
+      text-align: left;
+      white-space: normal;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.12s;
+      pointer-events: none;
+      z-index: 20;
+    }
+    .help-tip:hover::after { opacity: 1; visibility: visible; }
     .fov-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
     .fov-axis { font-size: 11px; color: var(--c-text-dim); letter-spacing: 1px; margin-right: 8px; }
     /* tab 条：固定在设置面板顶部，左对齐，超宽时左右箭头滚动。
@@ -165,8 +206,8 @@
     }
     /* 设置面板：tab 条固定顶部，内容区独立滚动 */
     .mode-settings-area {
-      width: 420px;
-      height: 300px;
+      width: 500px;
+      height: 400px;
       border: 1px solid var(--c-border-soft);
       border-radius: 4px;
       box-sizing: border-box;
@@ -188,7 +229,7 @@
       margin-bottom: 10px;
     }
     .mode-settings-area .setting-label {
-      width: 76px;
+      width: 94px;
       flex-shrink: 0;
       font-size: 13px;
       color: var(--c-text-dim);
@@ -208,6 +249,8 @@
       outline: none;
     }
     .setting-select:focus { border-color: var(--c-text); }
+    /* 锁死的设置（如六球定位的三个固定项）：下拉框留在原位对齐，但点不动 */
+    .setting-select:disabled { opacity: 0.5; cursor: not-allowed; }
     .mode-settings-area #modeHint { margin-top: 12px; }
     .setting-btns { display: flex; gap: 8px; }
     .sensitivity-slider {
@@ -383,12 +426,11 @@
               <button class="active" onclick="setColorMode('night')">夜晚</button>
               <button onclick="setColorMode('day')">白天</button>
             </div>
-            <div class="setting-hint">白天模式把天空 / 地板 / 墙面换成浅灰，文字转深色</div>
           </div>
         </div>
 
         <div class="setting-group">
-          <div class="setting-label">视野 FOV</div>
+          <div class="setting-label">视野 FOV<span class="help-tip" data-tip="hFOV / vFOV 按 16:9 换算；实际画面按屏幕比例">?</span></div>
           <div class="setting-control">
             <div class="fov-row">
               <input type="range" class="sensitivity-slider" id="fovSlider"
@@ -397,7 +439,6 @@
               <span class="sensitivity-val" id="fovVal">103</span><span class="fov-axis">h</span>
               <span class="sensitivity-val" id="fovVVal">70.5</span><span class="fov-axis">v</span>
             </div>
-            <div class="setting-hint">hFOV / vFOV 按 16:9 换算；实际画面按屏幕比例</div>
           </div>
         </div>
 
@@ -413,7 +454,6 @@
                 onkeydown="if(event.key==='Enter')this.blur()"
                 onblur="validateSensitivity(this)">
             </div>
-            <div class="setting-hint">基础灵敏度 yaw = 0.07°/count = 0.07×π/180 ≈ 0.001222 rad/px</div>
           </div>
         </div>
 
@@ -424,7 +464,6 @@
               <button class="active" onclick="setShowGun(true)">打开</button>
               <button onclick="setShowGun(false)">关闭</button>
             </div>
-            <div class="setting-hint">FOV 只调整视角，枪支固定 75° 不受影响</div>
           </div>
         </div>
       </div>

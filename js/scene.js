@@ -1,18 +1,18 @@
 // ====== Three.js Scene Initialization ======
 
 // 色彩模式的两套场景配色。夜晚 = 改动前的原值。
-// 注意：地板没有面片，它就是 scene.background 透过 GridHelper 看到的那层底色，
-// 所以改 bg 就等于同时改了天空和地板。
+// 场景里三样东西要上色：天空（scene.background）、地板、墙。三者逐级过渡
+// （夜晚 24→34→46、白天 230→214→200），墙根和墙顶两条分界线才看得见。
+// 注意：地板现在是真面片了，bg 只代表天空，不再是「天空 + 地板」。
 const SCENE_THEMES = {
-  night: { bg: 0x181818, wall: 0x222222, gridCenter: 0x333333, gridLine: 0x2a2a2a, wallLine: 0x333333 },
-  day:   { bg: 0xe6e6e6, wall: 0xdcdcdc, gridCenter: 0x5a5a5a, gridLine: 0x9a9a9a, wallLine: 0x5a5a5a },
+  night: { bg: 0x181818, floor: 0x222222, wall: 0x2e2e2e },
+  day:   { bg: 0xe6e6e6, floor: 0xd6d6d6, wall: 0xc8c8c8 },
 };
 
-// 这三个必须声明在 try 外面 —— try 块里的 const 是块级作用域，applySceneTheme()
-// 在块外拿不到它们。下面 try 里的赋值写的是这三个模块级变量（不再用 const 遮蔽）。
-let gridHelper = null;
+// floorMat / wallMat 必须声明在 try 外面 —— try 块里的 const 是块级作用域，
+// applySceneTheme() 在块外拿不到它们。下面 try 里的赋值写的是这两个模块级变量。
 let wallMat = null;
-let lineMat = null;
+let floorMat = null;
 
 try {
   const theme = SCENE_THEMES[colorMode] || SCENE_THEMES.night;
@@ -37,27 +37,23 @@ try {
   document.body.appendChild(renderer.domElement);
   renderer.domElement.style.display = 'none';
 
-  // Ground grid
-  gridHelper = new THREE.GridHelper(40, 20, theme.gridCenter, theme.gridLine);
-  scene.add(gridHelper);
+  // Floor —— 一块平铺的地面。和墙一样是不受光的纯色，没有光照渐变、没有阴影，
+  // 深度感全靠天空 / 地板 / 墙三条色带的分界线。覆盖 x∈[-20,20]、z∈[-30,10]：
+  // 往相机身后铺到 z=+10（相机在 z=0、y=5，垂直往下看要能看到脚下），远端伸到
+  // z=-30 藏进墙后面，所以视觉上地板正好在墙根 z=-20 收边，宽 40 与墙对齐。
+  const floorGeo = new THREE.PlaneGeometry(40, 40);
+  floorMat = new THREE.MeshBasicMaterial({ color: theme.floor, side: THREE.DoubleSide });
+  const floor = new THREE.Mesh(floorGeo, floorMat);
+  floor.rotation.x = -Math.PI / 2;   // 默认躺在 XY 面朝 +Z，转平后法线朝上
+  floor.position.set(0, 0, -10);
+  scene.add(floor);
 
-  // Wall
+  // Wall —— 竖直墙面，材质与地板同款（不受光的纯色）。
   const wallGeo = new THREE.PlaneGeometry(40, 15);
   wallMat = new THREE.MeshBasicMaterial({ color: theme.wall, side: THREE.DoubleSide });
   const wall = new THREE.Mesh(wallGeo, wallMat);
   wall.position.set(0, 7.5, -20);
   scene.add(wall);
-
-  // Lines
-  lineMat = new THREE.LineBasicMaterial({ color: theme.wallLine });
-  for (let x = -20; x <= 20; x += 2) {
-    const pts = [new THREE.Vector3(x, 0, 0), new THREE.Vector3(x, 0, -20), new THREE.Vector3(x, 15, -20)];
-    scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lineMat));
-  }
-  for (let y = 0; y <= 14; y += 2) {
-    const pts = [new THREE.Vector3(-20, y, -20), new THREE.Vector3(20, y, -20)];
-    scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lineMat));
-  }
 
   // Lights
   // 枪在 WEAPON_LAYER 上单独渲染，而 three.js 的 layers 同时过滤灯光 ——
@@ -85,6 +81,7 @@ try {
 // 切场景配色。UI 那半边（页面底色 / 文字 / 图表）由 settings.js 的 setColorMode()
 // 通过 body.theme-day + CSS 变量负责 —— WebGL 读不到 CSS 变量，两边只能分开写、
 // 由 setColorMode() 一起触发。
+// 场景侧只剩天空 / 地板 / 墙三个颜色要改（网格和墙线已移除，没有需要重建的对象了）。
 function applySceneTheme(mode) {
   const theme = SCENE_THEMES[mode] || SCENE_THEMES.night;
   if (!scene) return;
@@ -92,21 +89,6 @@ function applySceneTheme(mode) {
   // scene.background 是个 Color 实例，setHex 原地改，不换对象 ——
   // renderWeaponFrame() 会临时把它摘成 null 再还原引用，换对象会打乱那套逻辑。
   scene.background.setHex(theme.bg);
+  if (floorMat) floorMat.color.setHex(theme.floor);
   if (wallMat) wallMat.color.setHex(theme.wall);
-  if (lineMat) lineMat.color.setHex(theme.wallLine);
-  rebuildGrid(theme.gridCenter, theme.gridLine);
-}
-
-// GridHelper 的两个颜色在构造时就烘焙进了 geometry 的顶点色（材质是
-// LineBasicMaterial({ vertexColors: true })），改材质颜色没有任何效果 ——
-// 只能丢掉旧的、按新色重建。只在切主题时发生，不在每帧路径上。
-function rebuildGrid(centerColor, lineColor) {
-  if (!scene) return;
-  if (gridHelper) {
-    scene.remove(gridHelper);
-    gridHelper.geometry.dispose();
-    gridHelper.material.dispose();
-  }
-  gridHelper = new THREE.GridHelper(40, 20, centerColor, lineColor);
-  scene.add(gridHelper);
 }

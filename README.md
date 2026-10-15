@@ -11,7 +11,7 @@
 - **多种训练模式** — 3 球网格射击 + 六球定位射击（超远、极小、随机大范围）+ 跟枪（水平随机折返 / 随机游走）
 - **多种训练参数** — 距离 / 球体大小 / 时长 / 宫格布局可自由组合
 - **统一设置面板** — 通用 / 准心 / 各玩法三个 tab：全局设置（FOV、灵敏度、枪支、色彩模式）与玩法参数集中管理
-- **昼夜色彩模式** — 通用 tab 可切「夜晚 / 白天」。白天把天空 / 地板 / 墙面换成浅灰、文字转深色、网格转深色；场景配色走 `SCENE_THEMES`、UI 配色走 CSS 变量，一次切换两边同时生效
+- **昼夜色彩模式** — 通用 tab 可切「夜晚 / 白天」。白天把天空 / 地板 / 墙面换成浅灰、文字转深色；场景配色走 `SCENE_THEMES`、UI 配色走 CSS 变量，一次切换两边同时生效
 - **FPS 视角枪支** — 可开关的第一人称枪械模型（复用 gun-editor 导出的模型），开火触发后坐力动画；武器固定 75° FOV，不受视角 FOV 影响
 - **可调水平视野 hFOV** — 85°~120° 可调，默认 103°，内部自动换算为 Three.js 垂直 FOV
 - **3 秒倒计时** — 训练开始前 3-2-1 倒计时，留出准备时间
@@ -74,7 +74,7 @@ web-aim-trainer/
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| **`scene.js`** | ~112 | 初始化 Three.js：场景、相机（UI 默认 103° hFOV，内部换算为 vFOV）、renderer 初始隐藏、墙体、地面网格、灯光（两个灯都 `layers.enable(WEAPON_LAYER)`）、Raycaster；`scene.add(camera)` 让挂在相机下的枪能被遍历到。另含色彩模式的 `SCENE_THEMES` 表 + `applySceneTheme()` / `rebuildGrid()` |
+| **`scene.js`** | ~94 | 初始化 Three.js：场景、相机（UI 默认 103° hFOV，内部换算为 vFOV）、renderer 初始隐藏、地板（`PlaneGeometry(40,40)` 转平于 y=0）、墙体、灯光（两个灯都 `layers.enable(WEAPON_LAYER)`）、Raycaster；`scene.add(camera)` 让挂在相机下的枪能被遍历到。另含色彩模式的 `SCENE_THEMES` 表 + `applySceneTheme()`（切天空 / 地板 / 墙三色） |
 | **`weapon.js`** | ~125 | 第一人称枪支：`createGun()` 建模 → 整棵子树进 `WEAPON_LAYER` → 第二台固定 75° FOV 的 `weaponCamera` 清深度后叠加渲染；`setShowGun()` 全局开关、`triggerRecoil()` / `updateRecoil()` 后坐力动画 |
 | **`targets.js`** | ~34 | 创建最多 6 个共享 geometry 目标、按当前模式维护 `activeTargets`；具体重置逻辑由 `js/modes/*` 分发 |
 | **`crosshair.js`** | ~137 | Canvas 绘制准心 + 预览：颜色、线长（1-30px）、间隙（0-10px）、边框（0-5px）、中心点（0-6px），物理像素对齐 |
@@ -83,11 +83,11 @@ web-aim-trainer/
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| **`settings.js`** | ~262 | **设置面板**：tab 条 = 通用 / 准心 / 各玩法（`SETTINGS_GLOBAL_TABS` + 注册的模式），`currentSettingsTab` 控制三个 pane 互斥显示；`MODE_SETTINGS` per-mode 槽 + `renderModeSettings()` 按 `mode.settingGroups` 配置驱动渲染 + `setModeSetting()` / `setTrainingMode()`；`sanitizeModeSettings()` 把存档里失效的 option id 收敛回该组默认值；主菜单模式下拉框 `renderModeSelect()`；全局灵敏度（0.1-2.00，默认 0.5，数值对应 Valorant sens）/ hFOV（85°~120°，默认 103°）/ 色彩模式（`setColorMode()` / `applyColorMode()`） |
+| **`settings.js`** | ~269 | **设置面板**：tab 条 = 通用 / 准心 / 各玩法（`SETTINGS_GLOBAL_TABS` + 注册的模式），`currentSettingsTab` 控制三个 pane 互斥显示；`MODE_SETTINGS` per-mode 槽 + `renderModeSettings()` 按 `mode.settingGroups` 配置驱动渲染（`locked: true` 的组渲染成禁用下拉框）+ `setModeSetting()` / `setTrainingMode()`；`sanitizeModeSettings()` 把存档里失效的 option id 收敛回该组默认值；主菜单模式下拉框 `renderModeSelect()`；全局灵敏度（0.1-2.00，默认 0.5，数值对应 Valorant sens）/ hFOV（85°~120°，默认 103°）/ 色彩模式（`setColorMode()` / `applyColorMode()`） |
 | **`history.js`** | ~34 | localStorage 读写、保存记录、按模式筛选记录；模式 ID/Label 已迁移到 `js/modes/` |
 | **`modes/registry.js`** | ~63 | 模式注册表，提供 `getModeId()` / `getModeLabel()` / `resetTarget()` / 有效参数分发 |
 | **`modes/classic.js`** | ~130 | 3 球网格模式：网格生成、slot 排重、经典 modeId/label |
-| **`modes/six-ball.js`** | ~91 | 六球定位模式：超远极小目标、随机非网格生成、六球 modeId/label |
+| **`modes/six-ball.js`** | ~111 | 六球定位模式：超远极小目标、随机非网格生成、六球 modeId/label；设置面板前三组 `locked`（距离 / 大小 / 布局只展示），仅时间可调 |
 | **`modes/tracking.js`** | ~289 | 跟枪模式：准心压靶即计分（不开火）；两种轨迹——水平随机折返（匀速 + 随机折返点，行程在 `TRACK_LEG_PRESETS` 的区间内抽取后夹到墙，边界恒为 ±ax）、随机游走（随机加速度 + 限速 + 边界反弹）；折返行程档位同时编码进 modeId |
 | **`scoring/general-score.js`** | ~19 | 综合得分公式 `calcGeneralScore()` |
 | **`scoring/click-scoring.js`** | ~27 | 点击类模式射击处理：`triggerRecoil()`、raycast、命中/未中、反应时、HUD 更新 |
@@ -184,7 +184,7 @@ drawChart() + drawAccChart() 绘制得分与命中率历史趋势
 | 模式 | 目标数量 | 目标大小 | 距离/位置 | 生成方式 | 设置说明 |
 |------|----------|----------|-----------|----------|----------|
 | 3球网格射击 | 3 | 跟随「目标大小」设置 | 近/中/远 | 9宫格 / 25宫格 | 距离、大小、宫格、时间均可调 |
-| 六球定位 | 6 | 极小（0.15） | 超远 20m，贴近后墙 | 大范围连续随机，非网格 | 固定 6球/超远/极小/随机；时间可调 |
+| 六球定位 | 6 | 极小（0.15） | 超远 20m，贴近后墙 | 大范围连续随机，非网格 | 固定项（距离 / 大小 / 布局）以禁用下拉框展示，仅时间可调 |
 | 跟枪 | 1 | 跟随「靶子大小」设置 | 近/中/远 | 水平随机折返 / 随机游走 | 轨迹、折返行程、速度、靶子大小、距离、时间均可调 |
 
 跟枪模式不开火：准心射线压在靶上即累计「在靶」时间，综合得分 = 在靶毫秒数 × 在靶率。两种轨迹都按当前 FOV 折算振幅，换距离 / 换 FOV 时视觉运动幅度保持一致。
@@ -346,7 +346,7 @@ const bg = scene.background;
 scene.background = null;               // ← 必须摘掉，见下
 renderer.autoClear = false;
 try {
-  renderer.clearDepth();               // 清深度 → 枪永远压在最前面，不被墙/网格遮挡
+  renderer.clearDepth();               // 清深度 → 枪永远压在最前面，不被墙遮挡
   renderer.render(scene, weaponCamera);
 } finally {
   renderer.autoClear = true;
@@ -368,7 +368,7 @@ if ( renderer.autoClear || forceClear ) renderer.clear( ... );
 
 | 对象 | layer |
 |------|-------|
-| 场景（网格 / 墙 / 靶子） | 0（默认） |
+| 场景（地板 / 墙 / 靶子） | 0（默认） |
 | 枪整棵子树 | `WEAPON_LAYER` = 1（`gun.traverse(o => o.layers.set(1))`） |
 | 主相机 `camera` | 0 → 看不到枪 |
 | 武器相机 `weaponCamera` | `layers.set(1)` → 只看得到枪 |
@@ -405,7 +405,7 @@ WebGL 读不到 CSS 变量，所以配色没法只靠一边解决：
 
 | 半边 | 负责者 | 载体 |
 |------|--------|------|
-| 场景（天空 / 地板 / 墙 / 网格） | `js/scene.js` 的 `applySceneTheme()` | `SCENE_THEMES` 表 |
+| 场景（天空 / 地板 / 墙） | `js/scene.js` 的 `applySceneTheme()` | `SCENE_THEMES` 表 |
 | UI（页面底色 / 文字 / 边框 / 图表） | `body.theme-day` 类 | `index.html` 里的 CSS 变量 |
 
 `setColorMode()` 负责把两边一起切，并同步设置面板里的按钮 —— 切换是原子的，不会出现场景已经变白、文字还是浅灰的中间态。
@@ -414,20 +414,19 @@ WebGL 读不到 CSS 变量，所以配色没法只靠一边解决：
 
 | 元素 | 夜晚 | 白天 |
 |------|------|------|
-| 天空 / 地板（`scene.background`） | `0x181818` | `0xe6e6e6` |
-| 墙 | `0x222222` | `0xdcdcdc` |
-| 网格主线 / 墙线 | `0x333333` | `0x5a5a5a` |
-| 网格副线 | `0x2a2a2a` | `0x9a9a9a` |
+| 天空（`scene.background`） | `0x181818` | `0xe6e6e6` |
+| 地板 | `0x222222` | `0xd6d6d6` |
+| 墙 | `0x2e2e2e` | `0xc8c8c8` |
 | 页面底色 | `#000` | `#e6e6e6` |
 | 主文字 / 强调文字 | `#aaa` / `#fff` | `#444` / `#000` |
 | 得分折线 / 图例 | `#00ffff` | `#0088aa` |
 | 命中率折线 / 图例 | `#ff8800` | `#c85a00` |
 
-**地板没有面片**：它就是 `scene.background` 透过 `GridHelper` 看到的那层底色。所以改 `bg` 等于同时改了天空和地板。
+**地板是真面片。** `PlaneGeometry(40, 40)` 转平放在 y=0，覆盖 x∈[-20,20]、z∈[-30,10]：往相机身后铺到 z=+10（相机在 z=0、y=5，垂直往下看能看到脚下），远端伸到 z=-30 藏进墙后，所以视觉上正好在墙根 z=-20 收边。`scene.background` 现在只代表天空 —— 早先「改 `bg` 等于同时改了天空和地板」的说法已经作废。
 
-### 两个必须知道的实现细节
+**三色必须两两分得开。** 场景里原来贴在地上的网格和墙上的横竖线已整体移除，深度感全靠天空 / 地板 / 墙三条色带之间的分界线。两套主题都保持逐级过渡（夜晚 24→34→46、白天 230→214→200）；相邻两色收窄到 4% 左右就会糊成一片，整个场景退化成一整块纯色。
 
-**`GridHelper` 只能重建，不能改色。** 它的两个颜色在构造时就烘焙进了 geometry 的顶点色（材质是 `LineBasicMaterial({ vertexColors: true })`），改材质颜色没有任何效果。所以 `rebuildGrid()` 会 `dispose()` 旧的、按新色重建一个。只在切主题时发生，不在每帧路径上。
+### 一个必须知道的实现细节
 
 **`scene.background` 用 `setHex()` 原地改，不换对象。** 因为 `renderWeaponFrame()` 会临时把它摘成 `null` 再还原引用（见上一节），换对象会打乱那套逻辑。
 
@@ -435,7 +434,7 @@ WebGL 读不到 CSS 变量，所以配色没法只靠一边解决：
 
 canvas 里的颜色同样读不到 CSS 变量，所以 `js/chart.js` 同步维护了一份 `CHART_PALETTE`；CSS 侧的 `--c-chart-score` / `--c-chart-acc` 是给图例文字用的，两处必须一致。
 
-只换了三个值：得分线（亮青在浅底上对比度只有 1.00:1）、命中率线（橙 1.91:1）、末点描边（白）。图表的**网格线和轴标签两种模式共用** —— 深色画在浅底上本来就清楚（11.4:1 / 5.95:1），也和「网格变深」的设计意图一致。
+只换了三个值：得分线（亮青在浅底上对比度只有 1.00:1）、命中率线（橙 1.91:1）、末点描边（白）。图表的**网格线和轴标签两种模式共用** —— 深色画在浅底上本来就清楚（11.4:1 / 5.95:1）。
 
 ### 已知取舍
 
@@ -477,7 +476,7 @@ canvas 里的颜色同样读不到 CSS 变量，所以 `js/chart.js` 同步维�
 ### 想新增训练模式？
 
 1. 在 `js/modes/` 新增模式文件（如 `tracking-vertical.js`）
-2. 调用 `registerTrainingMode({...})`，声明 `id` / `label` / `targetCount` / `hint` / `settingGroups`（设置组：key + label + options[{id,label,value}] + apply）
+2. 调用 `registerTrainingMode({...})`，声明 `id` / `label` / `targetCount` / `settingGroups`（设置组：key + label + options[{id,label,value}] + apply；加 `locked: true` 则渲染成禁用的下拉框，只展示不可改）。可选 `hint` 会在面板底部显示一行说明
 3. 模式文件提供 `prepareTargets()`、`resetTarget()`、`getModeId()`、`getModeLabel()` 等
 4. 如是点击类模式，复用 `js/scoring/click-scoring.js` / `general-score.js`
 5. **设置面板的 tab、主菜单下拉框、设置项全部自动生成**（`settings.js` 按 `settingGroups` 渲染），无需改 HTML；只需在 `index.html` 脚本区引入新模式文件
@@ -485,7 +484,7 @@ canvas 里的颜色同样读不到 CSS 变量，所以 `js/chart.js` 同步维�
 
 ### 想新增训练参数？
 
-1. **模式专属参数**：在模式文件的 `settingGroups` 数组里加一个 group（key + label + options + apply），设置面板自动渲染、自动独立存储
+1. **模式专属参数**：在模式文件的 `settingGroups` 数组里加一个 group（key + label + options + apply），设置面板自动渲染、自动独立存储。只展示不可改的固定项加 `locked: true` 即可
 2. **全局参数**（如灵敏度 / hFOV / 枪支开关）：在 `settings.js` 添加变量 + `setXxx()` 函数，在 `index.html` 的 `#generalSettings` 里加控件，并在 `preferences.js` 的 `savePreferences()` / `loadPreferences()` 里持久化
 3. 如参数影响历史分组，在对应模式的 `getModeId()` / `getModeLabel()` 中编码
 
@@ -502,7 +501,7 @@ canvas 里的颜色同样读不到 CSS 变量，所以 `js/chart.js` 同步维�
 
 ### 想修改训练场景？
 
-直接编辑 `scene.js` —— 墙、地板、灯光、相机参数都在这里。
+直接编辑 `scene.js` —— 地板、墙、灯光、相机参数都在这里。
 
 ### 想调整色彩模式配色？
 
@@ -522,13 +521,16 @@ canvas 里的颜色同样读不到 CSS 变量，所以 `js/chart.js` 同步维�
 - **状态机**：`trainState` 取值 `'menu' | 'countdown' | 'playing' | 'paused' | 'over'`，所有 UI 切换围绕这个变量
 - **多模式架构**：`js/modes/registry.js` 负责模式注册与分发，具体模式逻辑放在 `js/modes/*.js`，避免在 `training.js` / `targets.js` 堆叠模式 if/else
 - **统一设置面板**：tab 条 = `SETTINGS_GLOBAL_TABS`（通用 / 准心）+ 所有注册的模式。三个 pane（`#generalSettings` / `#crosshairSettings` / `#modeSettingsContainer`）由 `currentSettingsTab` 互斥显示，通用与准心 tab 下的控件是静态 HTML，模式 tab 下由 `settingGroups` 配置驱动渲染
+- **locked 组**：`settingGroups` 里带 `locked: true` 的组渲染成 `disabled` 下拉框（不挂 `onchange`），用来把模式的固定项排进面板对齐展示（如六球定位的距离 / 大小 / 布局），它们不参与 `applyModeSettingsToGlobals()` 的同步
+- **设置名小问号**：`.help-tip`（`index.html` 的 CSS）是纯 CSS 气泡，说明文字放 `data-tip`，hover 时在下方展开。气泡锚在 `left:0` 向右展开而非居中 —— 面板窄，居中会被滚动区的横向裁剪切掉
 - **模式选择双入口**：主菜单下拉框（`#modeSelect`）和设置面板的模式 tab 共享同一个真值 `currentTrainingMode`，且只经 `setTrainingMode()` 写入 —— 两个入口不可能不同步
 - **Per-mode 设置**：每个模式在 `settingGroups` 里声明自己的设置组，`settings.js` 通用渲染；`MODE_SETTINGS` 每模式独立存值，切 tab 互不干扰，新模式自动建槽（`ensureModeSettings`）；`sanitizeModeSettings()` 是它的伴生逻辑，在 `loadPreferences()` 里把存档中已不存在的 option id 收敛回该组默认项 —— 否则 `applyModeSettingsToGlobals()` 的 `find()` 会静默落空、`apply` 不执行，全局变量停在旧值，而面板因为没有匹配项会显示第一项，界面与行为就此对不上
 - **计分拆分**：综合得分公式放在 `js/scoring/general-score.js`，点击命中处理放在 `js/scoring/click-scoring.js`
 - **渲染状态门控**：menu 隐藏 Three.js canvas 且不 render；countdown/playing 连续 render；paused/over 保留最后一帧但停止连续 WebGL render；RAF 主循环仍继续运行
 - **武器两遍渲染**：`renderSceneOnce()` 先画场景（主相机），再清深度画枪（`weaponCamera`，固定 75° FOV，只看 `WEAPON_LAYER`）；枪关闭时 `renderWeaponFrame()` 直接返回，退化成单遍渲染
 - **色彩模式分两半**：场景配色由 `SCENE_THEMES` + `applySceneTheme()` 管（WebGL 读不到 CSS 变量），UI 配色由 `body.theme-day` 上的 CSS 变量管，`setColorMode()` 一次触发两边
-- **`GridHelper` 换色只能重建**：两个颜色烘焙在 geometry 顶点色里，改材质无效，必须 `dispose()` 后重建
+- **三色色带承担深度**：网格和墙线已移除，天空 / 地板 / 墙三个颜色是唯一的远近参照（两条分界线：墙根、墙顶），改配色时必须保持三者两两分得开
+- **地板 / 墙都是不受光材质**：`MeshBasicMaterial` 平涂纯色，没有光照渐变也没有阴影 —— 靶子不会在地面投下影子。想要明暗渐变就得把两者换成受光材质并重调灯光
 - **恢复偏好不回写**：`loadPreferences()` 走 `applyColorMode()` / `applyGunVisibility()` 这类「只同步状态、不落盘」的 apply 版函数，避免在恢复途中把还没读到的设置冲成默认值
 - **pending 清理**：状态切换、pointer lock 丢失都会清空 `pendingMouseX/Y`，避免暂停/恢复后残留鼠标位移
 - **准心抗畸形**：所有需要居中的尺寸（线宽、中心点）强制偶数物理像素，保证 `cx - lw/2` 永远是整数

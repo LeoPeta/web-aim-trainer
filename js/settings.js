@@ -13,7 +13,10 @@ let currentSettingsTab = 'general';
 // mode's slot via applyModeSettingsToGlobals().
 const MODE_SETTINGS = {
   classic: { distance: 'near', size: 'big', grid: '3x3', time: '60' },
-  sixBall: { time: '60' },
+  // 六球定位的 distance / size / layout 是 locked 组（只有唯一选项），
+  // 这里必须一并列出：ensureModeSettings 见到槽已存在就直接返回，
+  // 不会替它补上新加的 key。
+  sixBall: { distance: 'far20', size: 'tiny', layout: 'random', time: '60' },
 };
 
 // ====== Mode Settings (config-driven tabs) ======
@@ -141,10 +144,14 @@ function renderModeSettings() {
     const opts = group.options.map(opt =>
       `<option value="${opt.id}" ${opt.id === currentId ? 'selected' : ''}>${opt.label}</option>`
     ).join('');
+    // locked 组（如六球定位的固定项）只展示不可改：下拉框 disabled 掉、也不挂
+    // onchange。它们的值由模式自己的逻辑硬编码，不参与全局变量同步。
+    const lockAttr = group.locked ? ' disabled' : '';
+    const changeAttr = group.locked ? '' : ` onchange="setModeSetting('${group.key}', this.value)"`;
     return (
       `<div class="setting-group">` +
         `<div class="setting-label">${group.label}</div>` +
-        `<select class="setting-select" onchange="setModeSetting('${group.key}', this.value)">${opts}</select>` +
+        `<select class="setting-select"${lockAttr}${changeAttr}>${opts}</select>` +
       `</div>`
     );
   }).join('');
@@ -232,7 +239,7 @@ function validateSensitivity(el) {
 
 // ====== Color Mode ======
 // 配色分两半，这里把两边一起切：
-//   ① 场景（天空 / 地板 / 墙 / 网格）→ scene.js 的 applySceneTheme()；
+//   ① 场景（天空 / 地板 / 墙）→ scene.js 的 applySceneTheme()；
 //   ② UI（页面底色 / 文字 / 边框 / 图表）→ body.theme-day 上的 CSS 变量。
 // WebGL 读不到 CSS 变量，所以没法只靠一边解决。
 function setColorMode(mode) {

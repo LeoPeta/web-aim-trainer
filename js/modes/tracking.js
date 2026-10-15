@@ -7,7 +7,7 @@ const TRACK_SPEED_HZ = { slow: 0.05, mid: 0.10, fast: 0.15 };
 // 振幅占视野半宽/半高的比例（留边，避免靶子贴到画面边缘）
 const TRACK_AMP_RATIO = 0.6;
 // 垂直振幅上限：相机在 y=5、地面在 y=0，限制靶心不低于 y≈1.2，
-// 否则远距离时靶子会沉到地面网格以下（classic 模式的目标也都保持在 y≥0.5）。
+// 否则远距离时靶子会沉到地面以下（classic 模式的目标也都保持在 y≥0.5）。
 const TRACK_MAX_Y_AMP = 3.8;
 // 随机游走的加速度标度
 const TRACK_RANDOM_ACCEL = 8;
@@ -199,7 +199,6 @@ registerTrainingMode({
   label: '跟枪',
   targetCount: 1,
   noShooting: true,
-  hint: '准心压在靶上即计分，无需点击',
   settingGroups: [
     {
       key: 'path',
