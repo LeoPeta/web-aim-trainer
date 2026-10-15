@@ -8,7 +8,7 @@ function savePreferences() {
       modeSettings: MODE_SETTINGS,
       currentTrainingMode,
       // Global settings
-      sensitivityMultiplier, cameraFov,
+      sensitivityMultiplier, cameraFov, showGun, colorMode,
       // Crosshair params
       crosshairColor, crosshairLen, crosshairGap, crosshairBorder, crosshairDot,
     }));
@@ -54,6 +54,7 @@ function loadPreferences() {
   applyModeSettingsToGlobals();
   renderModeTabs();
   renderModeSettings();
+  renderModeSelect();
 
   // ----- Sensitivity -----
   if (typeof prefs.sensitivityMultiplier === 'number') {
@@ -72,6 +73,22 @@ function loadPreferences() {
     document.getElementById('fovVVal').textContent =
       Math.round(horizontalToVerticalFov(cameraFov, 16 / 9) * 10) / 10;
     applyCameraFov();
+  }
+
+  // ----- Color mode -----
+  // 直接改 colorMode + applyColorMode()（而非 setColorMode），理由同下面枪支开关：
+  // 恢复过程中不能回写 localStorage。
+  if (SCENE_THEMES[prefs.colorMode]) {
+    colorMode = prefs.colorMode;
+    applyColorMode();
+  }
+
+  // ----- Gun viewmodel -----
+  // 直接改 showGun + applyGunVisibility()（而非 setShowGun），避免在准心设置
+  // 恢复之前就回写 localStorage，把已存的准心参数冲成默认值。
+  if (typeof prefs.showGun === 'boolean') {
+    showGun = prefs.showGun;
+    applyGunVisibility();
   }
 
   // ----- Crosshair -----

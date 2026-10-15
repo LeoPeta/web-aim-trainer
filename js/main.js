@@ -17,6 +17,10 @@ let yaw = 0, pitch = 0, isLocked = false;
 let pendingMouseX = 0, pendingMouseY = 0;
 let cameraFov = 103;  // horizontal FOV (hFOV) shown in UI
 
+// 色彩模式：'night'（默认，改动前的配色）| 'day'。
+// 定义在这里（最先加载的模块）而不是 settings.js，避免 scene.js 建场景时读它命中 TDZ。
+let colorMode = 'night';
+
 function horizontalToVerticalFov(hFov, aspect) {
   const hRad = hFov * Math.PI / 180;
   const vRad = 2 * Math.atan(Math.tan(hRad / 2) / aspect);
@@ -43,7 +47,10 @@ function shouldRenderScene() {
 }
 
 function renderSceneOnce() {
-  if (renderer && scene && camera) renderer.render(scene, camera);
+  if (!renderer || !scene || !camera) return;
+  renderer.render(scene, camera);
+  // 第二遍：武器（枪不可见时 renderWeaponFrame 直接返回，退化成单遍渲染）
+  renderWeaponFrame();
 }
 
 function updateRendererVisibility() {
@@ -78,6 +85,9 @@ let score = 0, hits = 0, misses = 0, trainState = 'menu';
 let timeLeft = 60, totalTime = 60;
 let lastTime = performance.now();
 const MAX_TARGET_COUNT = 6;
+// 武器专用渲染层：枪在 camera 下、由 weapon.js 的第二台相机单独渲染。
+// 定义在这里（最先加载的模块）而不是 weapon.js，避免 scene.js 读取时命中 TDZ。
+const WEAPON_LAYER = 1;
 let activeTargetCount = 3;
 let activeTargets = [];
 
@@ -135,6 +145,9 @@ function animate(time) {
   // is normally 0 outside locked gameplay and this call is a cheap no-op.
   processMouseMovement();
 
+  // 后坐力按 performance.now() 推进（与编辑器同款曲线），枪隐藏时是廉价 no-op
+  updateRecoil();
+
   updateRendererVisibility();
   if (shouldRenderScene()) renderSceneOnce();
 
@@ -153,6 +166,7 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   applyCameraFov();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  updateWeaponAspect();
   initCrosshairCanvas();
   if (trainState === 'paused' || trainState === 'over') renderSceneOnce();
 });

@@ -6,6 +6,20 @@ const chartCtxAcc = chartCanvasAcc.getContext('2d');
 let chartPoints = []; // store point positions for tooltip (score chart)
 let chartAccPoints = []; // store point positions for tooltip (accuracy chart)
 
+// 图表配色跟着色彩模式走。canvas 里的颜色读不到 CSS 变量，只能在这边同步一份
+// （CSS 侧的 --c-chart-score / --c-chart-acc 是给图例文字用的，两处要一致）。
+// 只有这三项需要换：亮青和橙在浅底上分别是 1.00:1 和 1.91:1，会糊掉；
+// 末点描边是白的，在浅底上同理。网格 #2a2a2a 和轴标签 #555 是深色画在浅底上，
+// 两种模式都看得清，共用一份。
+const CHART_PALETTE = {
+  night: { score: '#00ffff', acc: '#ff8800', cursor: '#fff' },
+  day:   { score: '#0088aa', acc: '#c85a00', cursor: '#000' },
+};
+
+function chartColors() {
+  return CHART_PALETTE[colorMode] || CHART_PALETTE.night;
+}
+
 function drawChart(records) {
   const dpr = window.devicePixelRatio || 1;
   const cw = 360, ch = 180;
@@ -60,7 +74,7 @@ function drawChart(records) {
   }
 
   // Y-axis labels: general score
-  chartCtx.fillStyle = '#00ffff';
+  chartCtx.fillStyle = chartColors().score;
   chartCtx.font = '10px Courier New';
   chartCtx.textAlign = 'right';
   for (let i = 0; i <= 4; i++) {
@@ -87,7 +101,7 @@ function drawChart(records) {
   chartPoints = pts;
 
   // Draw score line
-  chartCtx.strokeStyle = '#00ffff';
+  chartCtx.strokeStyle = chartColors().score;
   chartCtx.lineWidth = 1.5;
   if (pts.length >= 2) {
     chartCtx.beginPath();
@@ -98,12 +112,12 @@ function drawChart(records) {
 
   // Draw points
   for (const p of pts) {
-    chartCtx.fillStyle = '#00ffff';
+    chartCtx.fillStyle = chartColors().score;
     chartCtx.beginPath();
     chartCtx.arc(p.x, p.y, p.isLast ? 5 : 3, 0, Math.PI * 2);
     chartCtx.fill();
     if (p.isLast) {
-      chartCtx.strokeStyle = '#fff';
+      chartCtx.strokeStyle = chartColors().cursor;
       chartCtx.lineWidth = 1.5;
       chartCtx.stroke();
     }
@@ -163,7 +177,7 @@ function drawAccChart(records) {
   }
 
   // Y-axis labels: accuracy percentage
-  chartCtxAcc.fillStyle = '#ff8800';
+  chartCtxAcc.fillStyle = chartColors().acc;
   chartCtxAcc.font = '10px Courier New';
   chartCtxAcc.textAlign = 'right';
   for (let i = 0; i <= 4; i++) {
@@ -190,7 +204,7 @@ function drawAccChart(records) {
   chartAccPoints = pts;
 
   // Draw accuracy line
-  chartCtxAcc.strokeStyle = '#ff8800';
+  chartCtxAcc.strokeStyle = chartColors().acc;
   chartCtxAcc.lineWidth = 1.5;
   if (pts.length >= 2) {
     chartCtxAcc.beginPath();
@@ -201,12 +215,12 @@ function drawAccChart(records) {
 
   // Draw points
   for (const p of pts) {
-    chartCtxAcc.fillStyle = '#ff8800';
+    chartCtxAcc.fillStyle = chartColors().acc;
     chartCtxAcc.beginPath();
     chartCtxAcc.arc(p.x, p.y, p.isLast ? 5 : 3, 0, Math.PI * 2);
     chartCtxAcc.fill();
     if (p.isLast) {
-      chartCtxAcc.strokeStyle = '#fff';
+      chartCtxAcc.strokeStyle = chartColors().cursor;
       chartCtxAcc.lineWidth = 1.5;
       chartCtxAcc.stroke();
     }

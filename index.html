@@ -4,26 +4,76 @@
   <meta charset="UTF-8">
   <title>AIM TRAINER</title>
   <style>
-    body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
+    /* ===== 色彩模式 token =====
+       :root 是夜晚模式（默认，与改动前的配色完全一致）；body.theme-day 覆盖同名
+       变量得到白天模式。场景（天空 / 地板 / 墙 / 网格）读不到 CSS 变量，那部分
+       由 js/scene.js 的 applySceneTheme() 负责，两边由 setColorMode() 一起切。 */
+    :root {
+      --c-page: #000;                    /* 页面底色 */
+      --c-overlay: rgba(0,0,0,.88);      /* 全屏面板遮罩 */
+      --c-text: #aaa;                    /* 主文字 */
+      --c-text-strong: #fff;             /* 强调 / 数值 */
+      --c-text-btn: #ccc;                /* 按钮文字 */
+      --c-text-dim: #666;                /* 次要标签 */
+      --c-text-hint: #777;               /* 提示文字 */
+      --c-text-faint: #555;              /* 最弱的辅助文字（FPS） */
+      --c-border: #888;                  /* 主边框 */
+      --c-border-soft: #555;             /* 弱边框 / 分隔线 */
+      --c-surface: #222;                 /* 控件底色（下拉框） */
+      --c-track: #444;                   /* 滑块轨道 */
+      --c-hover: rgba(255,255,255,.08);  /* 悬停底色 */
+      --c-active: rgba(255,255,255,.12); /* 选中底色 */
+      --c-countdown: rgba(255,255,255,.5); /* 倒计时圆底 */
+      --c-chart-score: #00ffff;          /* 得分折线 / 图例 */
+      --c-chart-acc: #ff8800;            /* 命中率折线 / 图例 */
+    }
+    body.theme-day {
+      --c-page: #e6e6e6;
+      --c-overlay: rgba(230,230,230,.92);
+      --c-text: #444;
+      --c-text-strong: #000;
+      --c-text-btn: #333;
+      --c-text-dim: #555;
+      --c-text-hint: #6e6e6e;
+      --c-text-faint: #8a8a8a;
+      --c-border: #666;
+      --c-border-soft: #aaa;
+      --c-surface: #fff;
+      --c-track: #bbb;
+      --c-hover: rgba(0,0,0,.06);
+      --c-active: rgba(0,0,0,.10);
+      --c-countdown: rgba(0,0,0,.10);
+      /* 亮青 / 橙在浅底上分别只有 1.00:1 和 1.91:1，换成同色系的深色 */
+      --c-chart-score: #0088aa;
+      --c-chart-acc: #c85a00;
+    }
+
+    body { margin: 0; overflow: hidden; background: var(--c-page); font-family: 'Courier New', monospace; }
     body.playing { cursor: none; }
     canvas:not([id]) { position: fixed; top: 0; left: 0; z-index: 1; }
 
     #ui {
       position: fixed; top: 14px; left: 0; right: 0;
-      color: #aaa; font-size: 18px;
+      color: var(--c-text); font-size: 18px;
       letter-spacing: 2px; pointer-events: none; z-index: 50;
     }
     /* HUD row is rebuilt per mode (see hud.js renderHUD) */
     #hudRow {
       display: flex; justify-content: center; gap: 40px; text-align: center;
     }
-    .hud-val { color: #fff; }
+    .hud-val { color: var(--c-text-strong); }
     #timer {
       position: fixed; top: 14px; right: 20px;
-      color: #aaa; font-size: 20px; pointer-events: none; z-index: 50;
+      color: var(--c-text); font-size: 20px; pointer-events: none; z-index: 50;
     }
     #timer.urgent { color: #f44; animation: pulse 0.5s infinite; }
     @keyframes pulse { 50% { opacity: 0.5; } }
+
+    #fps {
+      position: fixed; top: 14px; left: 20px;
+      color: var(--c-text-faint); font-size: 13px;
+      pointer-events: none; z-index: 50; font-family: 'Courier New', monospace;
+    }
 
     #crosshairCanvas {
       position: fixed; top: 0; left: 0;
@@ -34,31 +84,31 @@
       position: fixed; inset: 0;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
-      gap: 20px; background: rgba(0,0,0,0.88);
-      z-index: 100; color: #aaa;
+      gap: 20px; background: var(--c-overlay);
+      z-index: 100; color: var(--c-text);
     }
     .overlay-base.hidden { display: none; }
-    .overlay-base h1 { font-size: 36px; color: #aaa; letter-spacing: 5px; }
-    .overlay-base p { font-size: 14px; opacity: 0.5; text-align: center; line-height: 1.8; color: #888; }
-    .final-score { font-size: 26px; color: #fff; }
+    .overlay-base h1 { font-size: 36px; color: var(--c-text); letter-spacing: 5px; }
+    .overlay-base p { font-size: 14px; opacity: 0.5; text-align: center; line-height: 1.8; color: var(--c-text-dim); }
+    .final-score { font-size: 26px; color: var(--c-text-strong); }
     .overlay-base button {
-      background: transparent; border: 2px solid #888; color: #ccc;
+      background: transparent; border: 2px solid var(--c-border); color: var(--c-text-btn);
       padding: 10px 35px; font-size: 16px; font-family: 'Courier New', monospace;
       cursor: pointer; letter-spacing: 2px; transition: all 0.3s; border-radius: 6px;
     }
-    .overlay-base button:hover { background: rgba(255,255,255,0.08); border-color: #ccc; }
+    .overlay-base button:hover { background: var(--c-hover); border-color: var(--c-text-btn); }
     .overlay-base button.primary {
-      background: rgba(255,255,255,0.08); border-color: #ccc; color: #fff;
+      background: var(--c-hover); border-color: var(--c-text-btn); color: var(--c-text-strong);
     }
 
     .setting-group {
       display: flex; flex-direction: column; align-items: center; gap: 8px;
     }
     .setting-group.disabled { opacity: 0.35; pointer-events: none; }
-    .setting-label { font-size: 13px; color: #666; letter-spacing: 1px; }
-    .setting-hint { font-size: 11px; color: #777; margin-top: 4px; letter-spacing: 0.5px; }
+    .setting-label { font-size: 13px; color: var(--c-text-dim); letter-spacing: 1px; }
+    .setting-hint { font-size: 11px; color: var(--c-text-hint); margin-top: 4px; letter-spacing: 0.5px; }
     .fov-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
-    .fov-axis { font-size: 11px; color: #888; letter-spacing: 1px; margin-right: 8px; }
+    .fov-axis { font-size: 11px; color: var(--c-text-dim); letter-spacing: 1px; margin-right: 8px; }
     /* tab 条：固定在设置面板顶部，左对齐，超宽时左右箭头滚动。
        全部限定在 .mode-settings-area 作用域内，以压过 .overlay-base button
        带来的圆角/边框/padding（否则 tab 会带上 6px 圆角）。 */
@@ -66,7 +116,7 @@
       display: flex;
       align-items: stretch;
       flex-shrink: 0;
-      border-bottom: 1px solid #555;
+      border-bottom: 1px solid var(--c-border-soft);
     }
     .mode-settings-area .tab-arrow {
       flex-shrink: 0;
@@ -75,7 +125,7 @@
       background: transparent;
       border: none;
       border-radius: 0;
-      color: #aaa;
+      color: var(--c-text);
       cursor: pointer;
       font-size: 16px;
       line-height: 1;
@@ -85,9 +135,9 @@
     }
     .mode-settings-area .tab-arrow.visible { display: flex; }
     .mode-settings-area .tab-arrow.disabled { opacity: 0.3; pointer-events: none; }
-    .mode-settings-area .tab-arrow:hover { color: #fff; background: rgba(255,255,255,0.05); }
-    .mode-settings-area #tabPrev { border-right: 1px solid #555; }
-    .mode-settings-area #tabNext { border-left: 1px solid #555; }
+    .mode-settings-area .tab-arrow:hover { color: var(--c-text-strong); background: var(--c-hover); }
+    .mode-settings-area #tabPrev { border-right: 1px solid var(--c-border-soft); }
+    .mode-settings-area #tabNext { border-left: 1px solid var(--c-border-soft); }
     .mode-settings-area .mode-tabs {
       display: flex;
       flex: 1;
@@ -102,22 +152,22 @@
       font-size: 13px;
       border: none;
       border-radius: 0;
-      border-right: 1px solid #555;
+      border-right: 1px solid var(--c-border-soft);
       background: transparent;
-      color: #ccc;
+      color: var(--c-text-btn);
       cursor: pointer;
       letter-spacing: 1px;
     }
-    .mode-settings-area .mode-tabs button:hover { color: #fff; background: rgba(255,255,255,0.05); }
+    .mode-settings-area .mode-tabs button:hover { color: var(--c-text-strong); background: var(--c-hover); }
     .mode-settings-area .mode-tabs button.active {
-      background: rgba(255,255,255,0.12);
-      color: #fff;
+      background: var(--c-active);
+      color: var(--c-text-strong);
     }
     /* 设置面板：tab 条固定顶部，内容区独立滚动 */
     .mode-settings-area {
       width: 420px;
       height: 300px;
-      border: 1px solid #555;
+      border: 1px solid var(--c-border-soft);
       border-radius: 4px;
       box-sizing: border-box;
       margin-bottom: 12px;
@@ -141,15 +191,15 @@
       width: 76px;
       flex-shrink: 0;
       font-size: 13px;
-      color: #666;
+      color: var(--c-text-dim);
       letter-spacing: 1px;
     }
     .setting-select {
       flex: 1;
       height: 30px;
-      background: #222;
-      color: #fff;
-      border: 1px solid #555;
+      background: var(--c-surface);
+      color: var(--c-text-strong);
+      border: 1px solid var(--c-border-soft);
       border-radius: 4px;
       padding: 2px 8px;
       font-family: inherit;
@@ -157,69 +207,87 @@
       letter-spacing: 0.5px;
       outline: none;
     }
-    .setting-select:focus { border-color: #aaa; }
+    .setting-select:focus { border-color: var(--c-text); }
     .mode-settings-area #modeHint { margin-top: 12px; }
     .setting-btns { display: flex; gap: 8px; }
     .sensitivity-slider {
       -webkit-appearance: none; appearance: none;
-      width: 220px; height: 4px; background: #444; border-radius: 2px; outline: none;
+      width: 220px; height: 4px; background: var(--c-track); border-radius: 2px; outline: none;
     }
     .sensitivity-slider::-webkit-slider-thumb {
       -webkit-appearance: none; appearance: none;
       width: 16px; height: 16px; border-radius: 50%;
-      background: #ccc; cursor: pointer; border: 2px solid #888;
+      background: var(--c-text-btn); cursor: pointer; border: 2px solid var(--c-border);
     }
     .sensitivity-slider::-moz-range-thumb {
       width: 16px; height: 16px; border-radius: 50%;
-      background: #ccc; cursor: pointer; border: 2px solid #888;
+      background: var(--c-text-btn); cursor: pointer; border: 2px solid var(--c-border);
     }
     .crosshair-colors { display: flex; gap: 8px; }
     .crosshair-colors button {
-      width: 28px; height: 28px; border-radius: 50%; border: 2px solid #555;
+      width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--c-border-soft);
       cursor: pointer; padding: 0; transition: border-color 0.2s;
     }
-    .crosshair-colors button.active { border-color: #fff; }
+    .crosshair-colors button.active { border-color: var(--c-text-strong); }
     .crosshair-slider-row {
       display: flex; align-items: center; gap: 10px;
     }
     .crosshair-slider-row input[type="range"] {
       -webkit-appearance: none; appearance: none;
-      width: 160px; height: 4px; background: #444; border-radius: 2px; outline: none;
+      width: 160px; height: 4px; background: var(--c-track); border-radius: 2px; outline: none;
     }
     .crosshair-slider-row input[type="range"]::-webkit-slider-thumb {
       -webkit-appearance: none; appearance: none;
       width: 14px; height: 14px; border-radius: 50%;
-      background: #ccc; cursor: pointer; border: 2px solid #888;
+      background: var(--c-text-btn); cursor: pointer; border: 2px solid var(--c-border);
     }
     .crosshair-slider-row input[type="range"]::-moz-range-thumb {
       width: 14px; height: 14px; border-radius: 50%;
-      background: #ccc; cursor: pointer; border: 2px solid #888;
+      background: var(--c-text-btn); cursor: pointer; border: 2px solid var(--c-border);
     }
-    .crosshair-slider-val { font-size: 13px; color: #888; min-width: 32px; text-align: right; }
+    .crosshair-slider-val { font-size: 13px; color: var(--c-text-dim); min-width: 32px; text-align: right; }
+    /* 预览底色固定中灰：它要能同时衬托白准心和黑准心，不跟着主题走 */
     .crosshair-preview {
       width: 100px; height: 100px; background: #a4a4a4;
-      border: 1px solid #333; border-radius: 4px;
+      border: 1px solid var(--c-border-soft); border-radius: 4px;
       display: flex; align-items: center; justify-content: center;
     }
     .sensitivity-val {
-      width: 60px; font-size: 14px; color: #fff; letter-spacing: 1px;
-      text-align: center; background: transparent; border: 1px solid #555;
+      width: 60px; font-size: 14px; color: var(--c-text-strong); letter-spacing: 1px;
+      text-align: center; background: transparent; border: 1px solid var(--c-border-soft);
       border-radius: 4px; padding: 2px 4px; font-family: 'Courier New', monospace;
       outline: none;
     }
-    .sensitivity-val:focus { border-color: #aaa; }
+    .sensitivity-val:focus { border-color: var(--c-text); }
     .setting-btns button { padding: 8px 18px; font-size: 13px; }
     .setting-btns button.active {
-      background: rgba(255,255,255,0.15); border-color: #aaa; color: #fff;
+      background: var(--c-active); border-color: var(--c-text); color: var(--c-text-strong);
     }
+    /* 主菜单：开始训练 / 设置 同宽、居中成一列。模式下拉框挂在开始训练右侧，
+       用绝对定位脱离居中流，否则它会把按钮顶得偏左。 */
+    .menu-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .menu-btn { box-sizing: border-box; width: 190px; }
+    .menu-start-wrap { position: relative; }
+    .menu-mode-select {
+      position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
+      margin-left: 12px; width: 170px; height: 44px; font-size: 15px;
+    }
+    /* 通用 tab：label 右侧的控件列（FOV / 灵敏度） */
+    .setting-control { flex: 1; min-width: 0; }
+    /* 面板内控件比主菜单窄，滑块必须收窄，否则撑破 420px 面板 */
+    .mode-settings-area .sensitivity-slider { width: 130px; }
+    /* tab 内容互斥显示 */
+    .mode-settings-scroll .hidden { display: none; }
+    /* 准心预览在面板内居中 */
+    .mode-settings-scroll .crosshair-preview { margin: 0 auto 12px; }
 
     .stats-grid {
       display: flex; justify-content: center;
       gap: 50px; margin: 15px 0; text-align: center;
     }
     .stat-item { display: flex; flex-direction: column; gap: 4px; }
-    .stat-val { font-size: 22px; color: #fff; }
-    .stat-label { font-size: 12px; color: #666; }
+    .stat-val { font-size: 22px; color: var(--c-text-strong); }
+    .stat-label { font-size: 12px; color: var(--c-text-dim); }
 
     #errorMsg {
       position: fixed; bottom: 20px; left: 0; right: 0;
@@ -228,28 +296,29 @@
     }
 
     .chart-section { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-    .chart-mode-label { font-size: 13px; color: #666; letter-spacing: 1px; }
-    .chart-legend { font-size: 12px; color: #888; display: flex; gap: 16px; }
-    .legend-score { color: #00ffff; }
-    .legend-acc { color: #ff8800; }
+    .chart-mode-label { font-size: 13px; color: var(--c-text-dim); letter-spacing: 1px; }
+    .chart-legend { font-size: 12px; color: var(--c-text-dim); display: flex; gap: 16px; }
+    /* 图例与折线同色，跟着主题走（canvas 里的颜色在 js/chart.js） */
+    .legend-score { color: var(--c-chart-score); }
+    .legend-acc { color: var(--c-chart-acc); }
     .charts-row { display: flex; gap: 16px; }
-    .charts-row canvas { border: 1px solid #333; border-radius: 4px; cursor: crosshair; }
+    .charts-row canvas { border: 1px solid var(--c-border-soft); border-radius: 4px; cursor: crosshair; }
     #chartTooltip {
       position: fixed; pointer-events: none; z-index: 150;
-      background: rgba(0,0,0,0.9); border: 1px solid #555; border-radius: 4px;
-      padding: 6px 10px; font-size: 12px; color: #ccc; white-space: nowrap;
+      background: var(--c-overlay); border: 1px solid var(--c-border-soft); border-radius: 4px;
+      padding: 6px 10px; font-size: 12px; color: var(--c-text-btn); white-space: nowrap;
       display: none; font-family: 'Courier New', monospace;
     }
-    .chart-no-data { font-size: 14px; color: #555; }
+    .chart-no-data { font-size: 14px; color: var(--c-text-faint); }
     .end-actions { display: flex; gap: 10px; position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); }
     .end-action-btn {
-      background: transparent; border: 1px solid #666; color: #888;
+      background: transparent; border: 1px solid var(--c-border); color: var(--c-text-dim);
       padding: 4px 14px; font-size: 12px; font-family: 'Courier New', monospace;
       cursor: pointer; letter-spacing: 1px; transition: all 0.3s; border-radius: 4px;
     }
-    .end-action-btn:hover { background: rgba(255,255,255,0.06); border-color: #999; color: #bbb; }
+    .end-action-btn:hover { background: var(--c-hover); border-color: var(--c-border); color: var(--c-text); }
     .end-action-btn.primary {
-      background: rgba(255,255,255,0.06); border-color: #888; color: #ccc;
+      background: var(--c-hover); border-color: var(--c-border); color: var(--c-text-btn);
     }
 
     #countdownOverlay {
@@ -259,11 +328,11 @@
     }
     #countdownOverlay.hidden { display: none; }
     #countdownText {
-      font-size: 72px; color: #fff; font-family: 'Aptos', sans-serif;
+      font-size: 72px; color: var(--c-text-strong); font-family: 'Aptos', sans-serif;
       font-weight: bold; letter-spacing: 0; opacity: 0.8;
       width: 100px; height: 100px;
       display: flex; align-items: center; justify-content: center;
-      background: rgba(255,255,255,0.5);
+      background: var(--c-countdown);
       border-radius: 50%;
     }
   </style>
@@ -275,47 +344,27 @@
   <div id="hudRow"></div>
 </div>
 <div id="timer">⏱ 60</div>
-<div id="fps" style="position:fixed;top:14px;left:20px;color:#555;font-size:13px;pointer-events:none;z-index:50;font-family:'Courier New',monospace;"></div>
+<div id="fps"></div>
 <canvas id="crosshairCanvas"></canvas>
 
 <!-- Main Menu -->
 <div id="menuOverlay" class="overlay-base">
   <h1>AIM TRAINER</h1>
-  <p style="font-size:9px;color:#555;margin:0;">按 F11 全屏显示</p>
-  <button class="primary" onclick="startTraining()">开始训练</button>
+  <p style="font-size:9px;color:var(--c-text-faint);margin:0;">按 F11 全屏显示</p>
 
-  <button onclick="showSettings()">准心设置</button>
-
-  <button onclick="showGameplay()">玩法设置</button>
-
-  <div class="setting-group">
-    <div class="setting-label">鼠标灵敏度</div>
-    <input type="range" class="sensitivity-slider" id="sensitivitySlider"
-      min="0.1" max="2" step="0.01" value="0.5"
-      oninput="setSensitivity(this.value)">
-    <input type="text" class="sensitivity-val" id="sensitivityVal" value="0.50"
-      onfocus="this.select()"
-      onkeydown="if(event.key==='Enter')this.blur()"
-      onblur="validateSensitivity(this)">
-    <div class="setting-hint">基础灵敏度 yaw = 0.07°/count = 0.07×π/180 ≈ 0.001222 rad/px</div>
-  </div>
-
-  <div class="setting-group">
-    <div class="setting-label">视野 FOV（16:9）</div>
-    <input type="range" class="sensitivity-slider" id="fovSlider"
-      min="85" max="120" step="1" value="103"
-      oninput="setCameraFov(this.value)">
-    <div class="fov-row">
-      <span class="sensitivity-val" id="fovVal">103</span><span class="fov-axis">h</span>
-      <span class="sensitivity-val" id="fovVVal">70.5</span><span class="fov-axis">v</span>
+  <div class="menu-actions">
+    <div class="menu-start-wrap">
+      <button class="menu-btn primary" onclick="startTraining()">开始训练</button>
+      <select class="setting-select menu-mode-select" id="modeSelect"
+        onchange="setTrainingMode(this.value)"></select>
     </div>
-    <div class="setting-hint">hFOV / vFOV 按 16:9 换算；实际画面按屏幕比例</div>
+    <button class="menu-btn" onclick="showSettings()">设置</button>
   </div>
 </div>
 
-<!-- Gameplay Settings Sub-menu -->
-<div id="gameplayOverlay" class="overlay-base hidden">
-  <h1>玩法设置</h1>
+<!-- Settings Sub-menu: 通用 / 准心 / 各玩法 -->
+<div id="settingsOverlay" class="overlay-base hidden">
+  <h1>设置</h1>
 
   <div class="mode-settings-area">
     <div class="mode-tabbar">
@@ -324,65 +373,118 @@
       <button class="tab-arrow" id="tabNext" onclick="scrollModeTabs(1)">›</button>
     </div>
     <div class="mode-settings-scroll">
+
+      <!-- 通用（全局设置） -->
+      <div id="generalSettings">
+        <div class="setting-group">
+          <div class="setting-label">色彩模式</div>
+          <div class="setting-control">
+            <div class="setting-btns" id="colorModeBtns">
+              <button class="active" onclick="setColorMode('night')">夜晚</button>
+              <button onclick="setColorMode('day')">白天</button>
+            </div>
+            <div class="setting-hint">白天模式把天空 / 地板 / 墙面换成浅灰，文字转深色</div>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <div class="setting-label">视野 FOV</div>
+          <div class="setting-control">
+            <div class="fov-row">
+              <input type="range" class="sensitivity-slider" id="fovSlider"
+                min="85" max="120" step="1" value="103"
+                oninput="setCameraFov(this.value)">
+              <span class="sensitivity-val" id="fovVal">103</span><span class="fov-axis">h</span>
+              <span class="sensitivity-val" id="fovVVal">70.5</span><span class="fov-axis">v</span>
+            </div>
+            <div class="setting-hint">hFOV / vFOV 按 16:9 换算；实际画面按屏幕比例</div>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <div class="setting-label">鼠标灵敏度</div>
+          <div class="setting-control">
+            <div class="fov-row">
+              <input type="range" class="sensitivity-slider" id="sensitivitySlider"
+                min="0.1" max="2" step="0.01" value="0.5"
+                oninput="setSensitivity(this.value)">
+              <input type="text" class="sensitivity-val" id="sensitivityVal" value="0.50"
+                onfocus="this.select()"
+                onkeydown="if(event.key==='Enter')this.blur()"
+                onblur="validateSensitivity(this)">
+            </div>
+            <div class="setting-hint">基础灵敏度 yaw = 0.07°/count = 0.07×π/180 ≈ 0.001222 rad/px</div>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <div class="setting-label">枪支显示</div>
+          <div class="setting-control">
+            <div class="setting-btns" id="gunToggleBtns">
+              <button class="active" onclick="setShowGun(true)">打开</button>
+              <button onclick="setShowGun(false)">关闭</button>
+            </div>
+            <div class="setting-hint">FOV 只调整视角，枪支固定 75° 不受影响</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 准心 -->
+      <div id="crosshairSettings" class="hidden">
+        <div class="crosshair-preview">
+          <canvas id="crosshairPreview" width="100" height="100"></canvas>
+        </div>
+
+        <div class="setting-group">
+          <div class="setting-label">准心颜色</div>
+          <div class="crosshair-colors" id="crosshairColorBtns">
+            <button style="background:#fff" class="active" onclick="setCrosshairColor('#fff',this)"></button>
+            <button style="background:#0f0" onclick="setCrosshairColor('#0f0',this)"></button>
+            <button style="background:#f44" onclick="setCrosshairColor('#f44',this)"></button>
+            <button style="background:#000;border-color:#555" onclick="setCrosshairColor('#000',this)"></button>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <div class="setting-label">准心线长</div>
+          <div class="crosshair-slider-row">
+            <input type="range" id="crosshairLenSlider" min="1" max="30" step="1" value="5"
+              oninput="setCrosshairLen(this.value)">
+            <span class="crosshair-slider-val" id="crosshairLenVal">5px</span>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <div class="setting-label">准心间隙</div>
+          <div class="crosshair-slider-row">
+            <input type="range" id="crosshairGapSlider" min="0" max="10" step="1" value="0"
+              oninput="setCrosshairGap(this.value)">
+            <span class="crosshair-slider-val" id="crosshairGapVal">0px</span>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <div class="setting-label">准心边框</div>
+          <div class="crosshair-slider-row">
+            <input type="range" id="crosshairBorderSlider" min="0" max="5" step="1" value="0"
+              oninput="setCrosshairBorder(this.value)">
+            <span class="crosshair-slider-val" id="crosshairBorderVal">0px</span>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <div class="setting-label">中心点</div>
+          <div class="crosshair-slider-row">
+            <input type="range" id="crosshairDotSlider" min="0" max="6" step="1" value="0"
+              oninput="setCrosshairDot(this.value)">
+            <span class="crosshair-slider-val" id="crosshairDotVal">0px</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 各玩法（按 mode.settingGroups 动态渲染） -->
       <div id="modeSettingsContainer"></div>
       <div class="setting-label" id="modeHint"></div>
-    </div>
-  </div>
-
-  <button onclick="hideGameplay()">返回</button>
-</div>
-
-<!-- Settings Sub-menu -->
-<div id="settingsOverlay" class="overlay-base hidden">
-  <h1>准心设置</h1>
-
-  <div class="crosshair-preview">
-    <canvas id="crosshairPreview" width="100" height="100"></canvas>
-  </div>
-
-  <div class="setting-group">
-    <div class="setting-label">准心颜色</div>
-    <div class="crosshair-colors" id="crosshairColorBtns">
-      <button style="background:#fff" class="active" onclick="setCrosshairColor('#fff',this)"></button>
-      <button style="background:#0f0" onclick="setCrosshairColor('#0f0',this)"></button>
-      <button style="background:#f44" onclick="setCrosshairColor('#f44',this)"></button>
-      <button style="background:#000;border-color:#555" onclick="setCrosshairColor('#000',this)"></button>
-    </div>
-  </div>
-
-  <div class="setting-group">
-    <div class="setting-label">准心线长</div>
-    <div class="crosshair-slider-row">
-      <input type="range" id="crosshairLenSlider" min="1" max="30" step="1" value="5"
-        oninput="setCrosshairLen(this.value)">
-      <span class="crosshair-slider-val" id="crosshairLenVal">5px</span>
-    </div>
-  </div>
-
-  <div class="setting-group">
-    <div class="setting-label">准心间隙</div>
-    <div class="crosshair-slider-row">
-      <input type="range" id="crosshairGapSlider" min="0" max="10" step="1" value="0"
-        oninput="setCrosshairGap(this.value)">
-      <span class="crosshair-slider-val" id="crosshairGapVal">0px</span>
-    </div>
-  </div>
-
-  <div class="setting-group">
-    <div class="setting-label">准心边框</div>
-    <div class="crosshair-slider-row">
-      <input type="range" id="crosshairBorderSlider" min="0" max="5" step="1" value="0"
-        oninput="setCrosshairBorder(this.value)">
-      <span class="crosshair-slider-val" id="crosshairBorderVal">0px</span>
-    </div>
-  </div>
-
-  <div class="setting-group">
-    <div class="setting-label">中心点</div>
-    <div class="crosshair-slider-row">
-      <input type="range" id="crosshairDotSlider" min="0" max="6" step="1" value="0"
-        oninput="setCrosshairDot(this.value)">
-      <span class="crosshair-slider-val" id="crosshairDotVal">0px</span>
     </div>
   </div>
 
@@ -427,11 +529,14 @@
 
 <div id="errorMsg"></div>
 
-<!-- Module load order matters: globals → scene → mode registry/modes → scoring
-     → settings → targets → crosshair → history → chart → hud → sound → training
-     → click-scoring → input → preferences (must be last; depends on all setters) -->
+<!-- Module load order matters: globals → scene → weapon (needs camera) → mode
+     registry/modes → scoring → settings → targets → crosshair → history → chart
+     → hud → sound → training → click-scoring → input → preferences (must be last;
+     depends on all setters) -->
 <script src="js/main.js"></script>
 <script src="js/scene.js"></script>
+<script src="gun-editor/gun-model.js"></script>
+<script src="js/weapon.js"></script>
 <script src="js/modes/registry.js"></script>
 <script src="js/modes/classic.js"></script>
 <script src="js/modes/six-ball.js"></script>
@@ -451,7 +556,9 @@
 <script>
   // Restore user preferences (crosshair, sensitivity, training params) from localStorage
   loadPreferences();
-  // Build the HUD row for the restored mode
+  // Build the mode dropdown (loadPreferences returns early when there is nothing
+  // saved, so the options must also be built here) + the HUD row for the mode
+  renderModeSelect();
   renderHUD();
   updateHUD();
   // Start the main loop after all modules loaded

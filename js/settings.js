@@ -4,6 +4,8 @@ let currentRadius = 0.45;
 let currentGrid = '3x3';
 let currentTrainingMode = 'classic';
 let sensitivityMultiplier = 0.5;
+// 设置面板当前 tab：'general' | 'crosshair' | 某个模式 id
+let currentSettingsTab = 'general';
 
 // Per-mode settings: each training mode keeps its own values, keyed by
 // setting-group.key → option.id. Game logic reads the global currentDist /
@@ -43,11 +45,20 @@ function applyModeSettingsToGlobals() {
   }
 }
 
+// 设置面板里两个固定的全局 tab，排在所有训练模式之前
+const SETTINGS_GLOBAL_TABS = [
+  { id: 'general', label: '通用' },
+  { id: 'crosshair', label: '准心' },
+];
+
 function renderModeTabs() {
   const tabs = document.getElementById('modeTabs');
   if (!tabs) return;
-  tabs.innerHTML = Object.values(TRAINING_MODES).map(m =>
-    `<button class="${m.id === currentTrainingMode ? 'active' : ''}" onclick="setTrainingMode('${m.id}')">${m.label}</button>`
+  const items = SETTINGS_GLOBAL_TABS.concat(
+    Object.values(TRAINING_MODES).map(m => ({ id: m.id, label: m.label }))
+  );
+  tabs.innerHTML = items.map(t =>
+    `<button class="${t.id === currentSettingsTab ? 'active' : ''}" onclick="setSettingsTab('${t.id}')">${t.label}</button>`
   ).join('');
   // tab 多时把当前 tab 滚动到可视区中部
   const active = tabs.querySelector('button.active');
@@ -55,6 +66,18 @@ function renderModeTabs() {
     tabs.scrollLeft = Math.max(0, active.offsetLeft - (tabs.clientWidth - active.clientWidth) / 2);
   }
   updateTabArrows();
+}
+
+// 切 tab：模式 tab 交给 setTrainingMode（同时把该模式设为当前模式），
+// 通用 / 准心只切面板。
+// 注意先显式写 currentSettingsTab —— 直接点 tab 必须切过去，不能被
+// setTrainingMode 里「停在通用/准心则不动」的规则吞掉（那条规则是给
+// 主菜单下拉框用的，不是给 tab 点击用的）。
+function setSettingsTab(tab) {
+  currentSettingsTab = tab;
+  if (TRAINING_MODES[tab]) { setTrainingMode(tab); return; }
+  renderModeTabs();
+  renderModeSettings();
 }
 
 // tab 条可横向滚动：溢出时显示左右箭头（到端变暗）
@@ -78,10 +101,23 @@ function scrollModeTabs(dir) {
 }
 
 function renderModeSettings() {
+  const container = document.getElementById('modeSettingsContainer');
+  const hint = document.getElementById('modeHint');
+  if (!container) return;
+
+  // 通用 / 准心 / 模式三个 pane 互斥显示
+  const isGeneral = currentSettingsTab === 'general';
+  const isCrosshair = currentSettingsTab === 'crosshair';
+  const general = document.getElementById('generalSettings');
+  const crosshair = document.getElementById('crosshairSettings');
+  if (general) general.classList.toggle('hidden', !isGeneral);
+  if (crosshair) crosshair.classList.toggle('hidden', !isCrosshair);
+  container.classList.toggle('hidden', isGeneral || isCrosshair);
+  if (hint) hint.classList.toggle('hidden', isGeneral || isCrosshair);
+  if (isGeneral || isCrosshair) return;
+
   const mode = getActiveModeConfig();
   const settings = MODE_SETTINGS[currentTrainingMode] || {};
-  const container = document.getElementById('modeSettingsContainer');
-  if (!container) return;
   container.innerHTML = (mode.settingGroups || []).map(group => {
     const currentId = settings[group.key];
     const opts = group.options.map(opt =>
@@ -94,7 +130,6 @@ function renderModeSettings() {
       `</div>`
     );
   }).join('');
-  const hint = document.getElementById('modeHint');
   if (hint) hint.textContent = mode.hint || '';
 }
 
@@ -114,32 +149,38 @@ function setTrainingMode(mode) {
   if (!TRAINING_MODES[mode]) return;
   ensureModeSettings(mode);
   currentTrainingMode = mode;
+  // 停在某个模式 tab 上时跟着新模式走；停在通用 / 准心则保持不动
+  if (!SETTINGS_GLOBAL_TABS.some(t => t.id === currentSettingsTab)) currentSettingsTab = mode;
   applyModeSettingsToGlobals();
   renderModeTabs();
   renderModeSettings();
+  renderModeSelect();
   savePreferences();
+}
+
+// 主菜单「开始训练」旁的模式下拉框：选项只渲染一次，之后只同步 value。
+// 和设置面板的 tab 共享同一个真值 currentTrainingMode，只经 setTrainingMode 写。
+function renderModeSelect() {
+  const sel = document.getElementById('modeSelect');
+  if (!sel) return;
+  if (!sel.options.length) {
+    sel.innerHTML = Object.values(TRAINING_MODES).map(m =>
+      `<option value="${m.id}">${m.label}</option>`
+    ).join('');
+  }
+  sel.value = currentTrainingMode;
 }
 
 // ====== Menu Navigation ======
 function showSettings() {
   document.getElementById('menuOverlay').classList.add('hidden');
   document.getElementById('settingsOverlay').classList.remove('hidden');
-}
-
-function hideSettings() {
-  document.getElementById('settingsOverlay').classList.add('hidden');
-  document.getElementById('menuOverlay').classList.remove('hidden');
-}
-
-function showGameplay() {
-  document.getElementById('menuOverlay').classList.add('hidden');
-  document.getElementById('gameplayOverlay').classList.remove('hidden');
   renderModeTabs();
   renderModeSettings();
 }
 
-function hideGameplay() {
-  document.getElementById('gameplayOverlay').classList.add('hidden');
+function hideSettings() {
+  document.getElementById('settingsOverlay').classList.add('hidden');
   document.getElementById('menuOverlay').classList.remove('hidden');
 }
 
@@ -169,4 +210,35 @@ function validateSensitivity(el) {
   document.getElementById('sensitivitySlider').value = val;
   sensitivityMultiplier = val;
   savePreferences();
+}
+
+// ====== Color Mode ======
+// 配色分两半，这里把两边一起切：
+//   ① 场景（天空 / 地板 / 墙 / 网格）→ scene.js 的 applySceneTheme()；
+//   ② UI（页面底色 / 文字 / 边框 / 图表）→ body.theme-day 上的 CSS 变量。
+// WebGL 读不到 CSS 变量，所以没法只靠一边解决。
+function setColorMode(mode) {
+  if (!SCENE_THEMES[mode]) return;
+  colorMode = mode;
+  applyColorMode();
+  savePreferences();
+}
+
+// 状态 → DOM / 场景的同步（不落盘）。
+// loadPreferences() 直接改 colorMode 后调它，避免在恢复过程中回写 localStorage，
+// 把还没恢复的准心参数冲成默认值。
+function applyColorMode() {
+  document.body.classList.toggle('theme-day', colorMode === 'day');
+  applySceneTheme(colorMode);
+  updateColorModeBtns();
+}
+
+// 通用 tab 里的两个按钮的 .active 由 colorMode 反推
+function updateColorModeBtns() {
+  const btns = document.getElementById('colorModeBtns');
+  if (!btns) return;
+  const list = btns.querySelectorAll('button');
+  if (list.length < 2) return;
+  list[0].classList.toggle('active', colorMode === 'night');
+  list[1].classList.toggle('active', colorMode === 'day');
 }

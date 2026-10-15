@@ -4,6 +4,9 @@ const CENTER_RAY_POINT = { x: 0, y: 0 };
 function handlePrimaryShot() {
   const now = performance.now();
 
+  // 开火即后坐，命中与未命中一致（枪隐藏时是 no-op）
+  triggerRecoil();
+
   raycaster.setFromCamera(CENTER_RAY_POINT, camera);
   const intersects = raycaster.intersectObjects(activeTargets);
 
