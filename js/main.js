@@ -148,6 +148,12 @@ function animate(time) {
   // 后坐力按 performance.now() 推进（与编辑器同款曲线），枪隐藏时是廉价 no-op
   updateRecoil();
 
+  // 命中闪白按 performance.now() 衰减回青色（40ms），没在闪时是廉价 no-op
+  updateTargetFlashes();
+
+  // 连发（打靶模式）按射速出弹；其余模式是廉价 no-op
+  stepAutoFire(dt);
+
   updateRendererVisibility();
   if (shouldRenderScene()) renderSceneOnce();
 

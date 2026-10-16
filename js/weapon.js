@@ -5,7 +5,7 @@
 // 模型与后坐力曲线与 gun-editor/ 完全一致（复用 gun-model.js 的 createGun）。
 
 const WEAPON_FOV = 75;         // 武器独立 FOV —— 固定，不随设置里的 FOV 变化
-const RECOIL_DURATION = 150;   // ms，与编辑器一致
+const RECOIL_DURATION = 150;   // ms，与编辑器一致；模式可用 recoilMs 覆盖（见 triggerRecoil）
 const RECOIL_POS = { x: 0, y: 0.04, z: 0.07 };
 const RECOIL_ROT = { x: 0.12, y: 0, z: 0 };
 
@@ -91,8 +91,13 @@ function updateGunToggleBtns() {
 // 前 25% 快速后坐，后 75% 缓慢复位；一次射击期间不叠加（recoilAnim 非空时忽略）
 function triggerRecoil() {
   if (!gun || !gun.visible || recoilAnim) return;
+  // 时长随模式走：打靶模式 10 发/秒，后坐必须短于 100ms 射击间隔才做得到
+  // 一发一弹（默认 150ms 会让它每两发才弹一次）。时长存在 recoilAnim 里
+  // 而不是读全局，避免动画播到一半切模式时曲线跳变。
+  const mode = getActiveModeConfig();
   recoilAnim = {
     startTime: performance.now(),
+    duration: (mode && mode.recoilMs) || RECOIL_DURATION,
     startPos: gun.position.clone(),
     startRot: gun.rotation.clone(),
   };
@@ -107,7 +112,7 @@ function resetRecoil() {
 
 function updateRecoil() {
   if (!recoilAnim || !gun) return;
-  const t = Math.min((performance.now() - recoilAnim.startTime) / RECOIL_DURATION, 1);
+  const t = Math.min((performance.now() - recoilAnim.startTime) / recoilAnim.duration, 1);
   const p = t < 0.25 ? t / 0.25 : 1 - (t - 0.25) / 0.75;
   gun.position.set(
     recoilAnim.startPos.x + RECOIL_POS.x * p,

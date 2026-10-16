@@ -1,16 +1,25 @@
 // ====== Tracking Mode (跟枪) ======
-// 准心压在靶上即计分，无需开火。靶子 1 个、永不消失，按所选轨迹持续移动。
+// 准心压在靶上即计分，无需开火。靶子 1 个、永不消失，沿水平随机折返轨迹持续移动。
 // 综合得分 = 在靶毫秒数 × 在靶率。
 
-// 速度档位 → 轨迹基频 (Hz)
-const TRACK_SPEED_HZ = { slow: 0.05, mid: 0.10, fast: 0.15 };
+// 速度档位 → 轨迹基频 (Hz)。
+// 5 个基频不是拍脑袋定的：先定「15m 处的参考线速度」，再换算成基频。参考线速度
+// 与打靶共用同一套武器移动状态（见 fire-practice.js 的 FIRE_SPEED）。换算两步：
+//   ω = v15 / 15                                     目标角速度（跟枪是恒定角速度模型）
+//   f = ω / (4 · TRACK_AMP_RATIO · tan(hFOV / 2))     基频，stepTrackHorizontal 用它算线速度
+// 默认 hFOV = 103° 时 tan(51.5°) = 1.25717，分母 = 3.01721：
+//   slow    2.00 m/s → ω 0.1333 → f 0.0442      fast    5.73 m/s → ω 0.3820 → f 0.1266
+//   mid     3.40 m/s → ω 0.2267 → f 0.0751      extreme 6.75 m/s → ω 0.4500 → f 0.1491
+//   brisk   4.90 m/s → ω 0.3267 → f 0.1083
+// ⚠ 这里存的是基频而不是角速度，所以换 FOV 时 ω 会跟着 tan(hFOV/2) 变（85° 打 0.73
+// 折，120° 变 1.38 倍）。这是跟枪一直以来的行为，本次没有改动 —— 改成直接存角速度、
+// 让 FOV 无关是另一个独立的行为变更。
+const TRACK_SPEED_HZ = { slow: 0.0442, mid: 0.0751, brisk: 0.1083, fast: 0.1266, extreme: 0.1491 };
 // 振幅占视野半宽/半高的比例（留边，避免靶子贴到画面边缘）
 const TRACK_AMP_RATIO = 0.6;
 // 垂直振幅上限：相机在 y=5、地面在 y=0，限制靶心不低于 y≈1.2，
 // 否则远距离时靶子会沉到地面以下（classic 模式的目标也都保持在 y≥0.5）。
 const TRACK_MAX_Y_AMP = 3.8;
-// 随机游走的加速度标度
-const TRACK_RANDOM_ACCEL = 8;
 // 折返行程预设：id → 每段行程区间（占半宽 ax 的比例）+ modeId 里的编码字符。
 // 下限封住「短期内多次折返」，上限封住「长时间往一个方向移动」。
 // 改档位只动这张表 —— 设置面板的选项标签和 modeId 编码都从它派生。
@@ -23,7 +32,6 @@ const TRACK_LEG_DEFAULT = 'even';
 // 准心中心点（复用点击模式的射线原点语义，但本文件自持，避免跨文件加载顺序依赖）
 const TRACK_CENTER_POINT = { x: 0, y: 0 };
 
-let trackPath = 'horizontal';
 let trackSpeed = 'mid';
 // 折返行程：档位 id + 展开后的区间（world 单位由 pickTrackHTurnX 乘 ax 得到）
 let trackLegRange = TRACK_LEG_DEFAULT;
@@ -41,13 +49,11 @@ function applyTrackLegRange(id) {
 // ---- Runtime state (per run) ----
 let trackOnTime = 0;     // 在靶累计秒数
 let trackElapsed = 0;    // playing 累计秒数
-let trackRandom = { x: 0, y: 0, vx: 0, vy: 0 };
 let trackH = { x: 0, dir: 1, turnX: 0 };   // 水平随机折返状态
 
 function resetTrackingState() {
   trackOnTime = 0;
   trackElapsed = 0;
-  trackRandom = { x: 0, y: 0, vx: 0, vy: 0 };
   trackH.x = 0;
   trackH.dir = 1;
   pickTrackHTurnX(trackAmplitude().ax);
@@ -107,28 +113,10 @@ function stepTrackHorizontal(dt) {
 }
 
 // 轨迹偏移量（相对视野中心，单位：世界坐标）。
-// 两种轨迹都读各自的状态（在 updateTrackingFrame 里推进），不再依赖时间参数。
+// 读 trackH 的状态（在 updateTrackingFrame 里推进），不依赖时间参数 —— 折返
+// 溢出量带入下一段，掉帧不会丢时间。
 function trackOffsetAt() {
-  if (trackPath === 'horizontal') {
-    return { x: trackH.x, y: 0 };
-  }
-  return { x: trackRandom.x, y: trackRandom.y };
-}
-
-// 随机游走：随机加速度 + 限速 + 边界反弹
-function stepTrackRandom(dt) {
-  const { ax, ay } = trackAmplitude();
-  const vmax = trackFrequency() * 4 * ax;
-  trackRandom.vx += (Math.random() - 0.5) * TRACK_RANDOM_ACCEL * vmax * dt;
-  trackRandom.vy += (Math.random() - 0.5) * TRACK_RANDOM_ACCEL * vmax * dt;
-  trackRandom.vx = Math.max(-vmax, Math.min(vmax, trackRandom.vx));
-  trackRandom.vy = Math.max(-vmax, Math.min(vmax, trackRandom.vy));
-  trackRandom.x += trackRandom.vx * dt;
-  trackRandom.y += trackRandom.vy * dt;
-  if (trackRandom.x > ax)  { trackRandom.x = ax;  trackRandom.vx = -Math.abs(trackRandom.vx); }
-  if (trackRandom.x < -ax) { trackRandom.x = -ax; trackRandom.vx =  Math.abs(trackRandom.vx); }
-  if (trackRandom.y > ay)  { trackRandom.y = ay;  trackRandom.vy = -Math.abs(trackRandom.vy); }
-  if (trackRandom.y < -ay) { trackRandom.y = -ay; trackRandom.vy =  Math.abs(trackRandom.vy); }
+  return { x: trackH.x, y: 0 };
 }
 
 function trackingPct() {
@@ -148,8 +136,7 @@ function resetTrackingTarget(target) {
 
 function updateTrackingFrame(dt) {
   trackElapsed += dt;
-  if (trackPath === 'horizontal') stepTrackHorizontal(dt);
-  if (trackPath === 'random') stepTrackRandom(dt);
+  stepTrackHorizontal(dt);
 
   const off = trackOffsetAt();
   const target = activeTargets[0];
@@ -165,26 +152,42 @@ function updateTrackingFrame(dt) {
 }
 
 function getTrackingModeId() {
-  const pathCode = { horizontal: 'H', random: 'R' }[trackPath] || 'H';
-  const speedCode = { slow: 'S', mid: 'M', fast: 'F' }[trackSpeed] || 'M';
+  // 轨迹码恒为 'H'（随机游走已下线，不再有第二种）。**这一位不能删**：删掉后
+  // modeId 从 5 段变 4 段，历史里的 TRK-R* 会被按新格式解析、读成别的轨迹。
+  const pathCode = 'H';
+  // 编码用 S/M/A/F/X，与打靶同一套。S/M/F 三位保持旧的档位语义，
+  // 所以历史里的 TRK-*M* 记录解码出来的档位名跟当年一模一样。
+  const speedCode = { slow: 'S', mid: 'M', brisk: 'A', fast: 'F', extreme: 'X' }[trackSpeed] || 'M';
   const legCode = TRACK_LEG_PRESETS[trackLegRange].code;
   const distCode = { 8: 'N', 12: 'M', 16: 'F' }[currentDist] || 'M';
   const sizeCode = { 0.45: 'B', 0.35: 'M', 0.25: 'S', 0.15: 'T' }[currentRadius] || 'M';
   return `TRK-${pathCode}${speedCode}${legCode}-${distCode}${sizeCode}-${totalTime}`;
 }
 
-// 解码器：把历史记录的 ID 还原成人话。'8'（8字匀速）已随该轨迹一并下线，
-// 所以旧的 TRK-8* 记录会落到回退值、显示成「水平随机折返」——这是刻意取舍，
-// 想改成「未知轨迹」只需换掉这里的回退字符串。
+// 解码器：把历史记录的 ID 还原成人话。
+//
+// 轨迹码表里三项都留着，哪怕只剩一种还在跑：
+//   'H' 水平随机折返 —— 唯一的在役轨迹
+//   'R' 随机游走     —— 已下线，但表项必须留，否则旧的 TRK-R* 记录会被
+//                       回退成「水平随机折返」，把随机游走的成绩张冠李戴
+//   '8' 8字匀速      —— 更早下线，连码位都失效了（它当年占的也是 ps[0]），
+//                       所以 TRK-8* 只能落到回退值，显示成「水平随机折返」。
+//                       这是一次刻意的取舍；想改成更诚实的「未知轨迹」，
+//                       只需换掉下面 pathLabel 的回退字符串。
 //
 // 折返行程码是后来加的（ps[2]），早于它的记录没有这一位 → undefined →
 // 整段省略，旧记录因此仍按原样显示，不会被扣上一顶不属于它的档位帽子。
+//
+// 速度码解出的同样是**档位名**（慢速/中速/较快/快速/极快），不是设置面板上
+// 带武器状态的标签 —— 理由与打靶的 getFireModeLabel 相同：旧的 M 记录当年跑的
+// 是 f = 0.10（ω ≈ 0.30），不是现在 mid 的 f = 0.0751（持刀静步）。给历史记录
+// 写武器状态等于声称它按那个状态跑过，而它没有。
 function getTrackingModeLabel(modeId) {
   const parts = modeId.split('-');
   const ps = parts[1] || '';
   const ds = parts[2] || '';
   const pathLabel = { H: '水平随机折返', R: '随机游走' }[ps[0]] || '水平随机折返';
-  const speedLabel = { S: '慢速', M: '中速', F: '快速' }[ps[1]] || '中速';
+  const speedLabel = { S: '慢速', M: '中速', A: '较快', F: '快速', X: '极快' }[ps[1]] || '中速';
   const legLabel = { T: '紧凑', E: '均衡', W: '舒展' }[ps[2]];
   const distLabel = { N: '近', M: '中', F: '远' }[ds[0]] || '中';
   const sizeLabel = { B: '大', M: '中', S: '小', T: '极小' }[ds[1]] || '中';
@@ -201,18 +204,8 @@ registerTrainingMode({
   noShooting: true,
   settingGroups: [
     {
-      key: 'path',
-      label: '运动轨迹',
-      options: [
-        { id: 'horizontal', label: '水平随机折返', value: 'horizontal', default: true },
-        { id: 'random', label: '随机游走', value: 'random' },
-      ],
-      apply: v => { trackPath = v; },
-    },
-    {
-      // 只作用于「水平随机折返」；随机游走不看这两个值。
       key: 'legRange',
-      label: '折返行程（水平随机折返）',
+      label: '折返行程',
       options: Object.keys(TRACK_LEG_PRESETS).map(id => {
         const p = TRACK_LEG_PRESETS[id];
         return {
@@ -228,9 +221,11 @@ registerTrainingMode({
       key: 'speed',
       label: '运动速度',
       options: [
-        { id: 'slow', label: '慢', value: 'slow' },
-        { id: 'mid', label: '中', value: 'mid', default: true },
-        { id: 'fast', label: '快', value: 'fast' },
+        { id: 'slow', label: '慢（持枪静步）', value: 'slow' },
+        { id: 'mid', label: '中（持刀静步）', value: 'mid', default: true },
+        { id: 'brisk', label: '较快（持狙奔跑）', value: 'brisk' },
+        { id: 'fast', label: '快（持手枪奔跑）', value: 'fast' },
+        { id: 'extreme', label: '极快（持刀奔跑）', value: 'extreme' },
       ],
       apply: v => { trackSpeed = v; },
     },

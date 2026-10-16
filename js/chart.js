@@ -240,10 +240,17 @@ function showChartTooltip(e, points, tooltip) {
       const d = new Date(p.record.date);
       const dateStr = (d.getMonth() + 1) + '/' + d.getDate() + ' ' +
         d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
-      // Aim-only modes (e.g. tracking) store hits=0; show their aim metric instead
-      const detail = p.record.hits > 0
-        ? `命中 ${p.record.hits} · 命中率 ${p.record.accuracy}% · 反应 ${p.record.avgReaction}ms`
-        : `在靶率 ${p.record.accuracy}%`;
+      // 纯瞄准模式（跟枪）hits 恒为 0，改显示在靶率；有射击的模式显示命中率。
+      // avgReaction 为 0 说明该模式不采集反应时长（连发模式射击间隔恒为
+      // 100ms，没有意义），整段省略，不显示「反应 0ms」。
+      const r = p.record;
+      let detail;
+      if (r.hits > 0) {
+        detail = `命中 ${r.hits} · 命中率 ${r.accuracy}%`
+          + (r.avgReaction > 0 ? ` · 反应 ${r.avgReaction}ms` : '');
+      } else {
+        detail = `在靶率 ${r.accuracy}%`;
+      }
       tooltip.innerHTML =
         `${dateStr}<br>` +
         `综合得分 ${p.record.generalScore}<br>` +

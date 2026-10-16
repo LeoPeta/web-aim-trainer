@@ -33,6 +33,10 @@ function prepareActiveModeTargets() {
 }
 
 function resetTarget(target) {
+  // 先撤掉命中闪白。3球/6球 这类模式命中即瞬移，球带着闪色挪到新位置会残留
+  // 40ms 的白影；闪白只对「球留在原地」的打靶模式有意义。打靶的 onTargetHit
+  // 接管了命中、不走 resetTarget，所以它的闪白不会被这里撤掉。
+  clearTargetFlash(target);
   const mode = getActiveModeConfig();
   if (mode.resetTarget) mode.resetTarget(target);
 }

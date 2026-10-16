@@ -8,6 +8,7 @@ function startTraining() {
   lastShotTime = 0;
   yaw = 0; pitch = 0;
   clearInputBuffer();
+  releaseTrigger();   // 上一局按住左键结束时，新一局不该自动开火
   camera.rotation.set(0, 0, 0);
   camera.position.set(0, 5, 0);
 
@@ -91,6 +92,9 @@ function renderEndStats(generalScore, items) {
 function endTraining() {
   trainState = 'over';
   clearInputBuffer();
+  // 'over' 状态会保留最后一帧画面，此时正在闪白的球会白着冻在结算页上、
+  // 还会漏进下一个模式。结束前统一撤掉。
+  clearAllTargetFlashes();
   updateRendererVisibility();
   if (isLocked) document.exitPointerLock();
   document.getElementById('crosshairCanvas').style.display = 'none';
@@ -108,11 +112,13 @@ function endTraining() {
     const stats = mode.getEndStats();
     generalScore = mode.getScore ? mode.getScore() : 0;
     recScore = generalScore;
-    recHits = 0;
-    recMisses = 0;
+    // 纯瞄准模式（跟枪）没有命中/未中的概念，写 0；有射击的模式（打靶）
+    // 在 stats 里带上真实值。图例文字同理，由模式自己声明。
+    recHits = stats.hits != null ? stats.hits : 0;
+    recMisses = stats.misses != null ? stats.misses : 0;
     recAccuracy = stats.accuracy;
     recReaction = 0;
-    accLegend = '在靶率趋势';
+    accLegend = stats.accLegend || '在靶率趋势';
     renderEndStats(generalScore, stats.items);
   } else {
     const totalShots = hits + misses;

@@ -4,9 +4,12 @@
 // 场景里三样东西要上色：天空（scene.background）、地板、墙。三者逐级过渡
 // （夜晚 24→34→46、白天 230→214→200），墙根和墙顶两条分界线才看得见。
 // 注意：地板现在是真面片了，bg 只代表天空，不再是「天空 + 地板」。
+//
+// flash 不是场景配色，是「命中闪白」用的颜色（见 targets.js）。它必须跟主题走：
+// 夜晚背景 24、闪白才有对比；白天背景是 230，白球等于隐形，所以白天闪深灰。
 const SCENE_THEMES = {
-  night: { bg: 0x181818, floor: 0x222222, wall: 0x2e2e2e },
-  day:   { bg: 0xe6e6e6, floor: 0xd6d6d6, wall: 0xc8c8c8 },
+  night: { bg: 0x181818, floor: 0x222222, wall: 0x2e2e2e, flash: 0xffffff },
+  day:   { bg: 0xe6e6e6, floor: 0xd6d6d6, wall: 0xc8c8c8, flash: 0x303030 },
 };
 
 // floorMat / wallMat 必须声明在 try 外面 —— try 块里的 const 是块级作用域，

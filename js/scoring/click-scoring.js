@@ -8,20 +8,28 @@ function handlePrimaryShot() {
   triggerRecoil();
 
   raycaster.setFromCamera(CENTER_RAY_POINT, camera);
-  const intersects = raycaster.intersectObjects(activeTargets);
-
-  if (lastShotTime > 0) {
-    reactionTimes.push(now - lastShotTime);
-  }
+  // 只打「当前可见」的球：打靶模式击杀后球会隐身 0.6s 等重生，那段时间
+  // 它不该还能被打中（否则白记一发命中）。
+  const intersects = raycaster.intersectObjects(activeTargets.filter(t => t.visible));
 
   if (intersects.length > 0) {
     score++;
     hits++;
     playHitSound();
-    resetTarget(intersects[0].object);
+    flashTarget(intersects[0].object);
+    // 模式可接管命中后果（打靶模式是扣血）；没接管就沿用默认的「命中即重生」。
+    if (!callModeHook('onTargetHit', intersects[0].object)) {
+      resetTarget(intersects[0].object);
+    }
   } else {
     misses++;
   }
-  lastShotTime = now;
+
+  // 连发模式（打靶）射击间隔恒为 100ms，反应时长没有意义，不采集。
+  // lastShotTime 只服务于反应时长，一并跳过。
+  if (!getActiveModeConfig().autoFire) {
+    if (lastShotTime > 0) reactionTimes.push(now - lastShotTime);
+    lastShotTime = now;
+  }
   updateHUD();
 }
