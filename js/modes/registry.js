@@ -13,20 +13,6 @@ function getEffectiveTargetCount() {
   return getActiveModeConfig().targetCount;
 }
 
-function getEffectiveRadius() {
-  const mode = getActiveModeConfig();
-  return mode.getRadius ? mode.getRadius() : currentRadius;
-}
-
-function getEffectiveDistance() {
-  const mode = getActiveModeConfig();
-  return mode.getDistance ? mode.getDistance() : currentDist;
-}
-
-function isSixBallMode() {
-  return currentTrainingMode === 'sixBall';
-}
-
 function prepareActiveModeTargets() {
   const mode = getActiveModeConfig();
   if (mode.prepareTargets) mode.prepareTargets();

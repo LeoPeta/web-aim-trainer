@@ -357,9 +357,6 @@ registerTrainingMode({
     { label: '击杀', value: () => fireKills },
     { label: '命中率', value: fireAccuracy },
   ],
-  // getEffectiveRadius / getEffectiveDistance 目前全仓无人调用（见 registry.js），
-  // 这里只补 getRadius —— 本模式有四层，没有单一「目标距离」可言。
-  getRadius: () => currentRadius,
   prepareTargets: prepareFireTargets,
   resetTarget: resetFireTarget,
   onFrame: updateFireFrame,

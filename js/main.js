@@ -97,7 +97,6 @@ let countdownTime = 0;
 // Reaction time tracking
 let lastShotTime = 0;
 let reactionTimes = [];
-let lastClickTime = 0;
 
 // Raycaster for clicking detection (used by input.js)
 let raycaster;

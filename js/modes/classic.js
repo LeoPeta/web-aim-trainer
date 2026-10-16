@@ -118,8 +118,6 @@ registerTrainingMode({
       apply: v => { totalTime = v; },
     },
   ],
-  getRadius: () => currentRadius,
-  getDistance: () => currentDist,
   prepareTargets: prepareClassicTargets,
   resetTarget: resetClassicTarget,
   getModeId: getClassicModeId,

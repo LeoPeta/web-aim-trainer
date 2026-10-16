@@ -15,11 +15,8 @@
 // 折，120° 变 1.38 倍）。这是跟枪一直以来的行为，本次没有改动 —— 改成直接存角速度、
 // 让 FOV 无关是另一个独立的行为变更。
 const TRACK_SPEED_HZ = { slow: 0.0442, mid: 0.0751, brisk: 0.1083, fast: 0.1266, extreme: 0.1491 };
-// 振幅占视野半宽/半高的比例（留边，避免靶子贴到画面边缘）
+// 振幅占视野半宽的比例（留边，避免靶子贴到画面边缘）
 const TRACK_AMP_RATIO = 0.6;
-// 垂直振幅上限：相机在 y=5、地面在 y=0，限制靶心不低于 y≈1.2，
-// 否则远距离时靶子会沉到地面以下（classic 模式的目标也都保持在 y≥0.5）。
-const TRACK_MAX_Y_AMP = 3.8;
 // 折返行程预设：id → 每段行程区间（占半宽 ax 的比例）+ modeId 里的编码字符。
 // 下限封住「短期内多次折返」，上限封住「长时间往一个方向移动」。
 // 改档位只动这张表 —— 设置面板的选项标签和 modeId 编码都从它派生。
@@ -64,10 +61,8 @@ function resetTrackingState() {
 function trackAmplitude() {
   const d = currentDist;
   const hFov = cameraFov * Math.PI / 180;
-  const vFov = horizontalToVerticalFov(cameraFov, camera.aspect) * Math.PI / 180;
   return {
     ax: Math.tan(hFov / 2) * d * TRACK_AMP_RATIO,
-    ay: Math.min(Math.tan(vFov / 2) * d * TRACK_AMP_RATIO, TRACK_MAX_Y_AMP),
   };
 }
 
@@ -264,8 +259,6 @@ registerTrainingMode({
   hudItems: [
     { label: '在靶', value: () => trackingPct() + '%' },
   ],
-  getRadius: () => currentRadius,
-  getDistance: () => currentDist,
   prepareTargets: prepareTrackingTargets,
   resetTarget: resetTrackingTarget,
   onFrame: updateTrackingFrame,

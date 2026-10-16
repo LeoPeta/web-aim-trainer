@@ -101,8 +101,6 @@ registerTrainingMode({
       apply: v => { totalTime = v; },
     },
   ],
-  getRadius: () => 0.15,
-  getDistance: () => 20,
   prepareTargets: prepareSixBallTargets,
   resetTarget: resetSixBallTarget,
   getModeId: getSixBallModeId,
